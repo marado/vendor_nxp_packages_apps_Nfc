@@ -32,6 +32,7 @@ import android.graphics.Matrix;
 import android.graphics.PixelFormat;
 import android.graphics.SurfaceTexture;
 import android.os.Binder;
+import android.os.SystemProperties;
 import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.LayoutInflater;
@@ -436,6 +437,10 @@ public class SendUi implements Animator.AnimatorListener, View.OnTouchListener,
         mDisplay.getRealMetrics(mDisplayMetrics);
         boolean hasNavBar =  mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_showNavigationBar);
+        String navBarOverride = SystemProperties.get("ro.hw.nav_keys");
+        if (navBarOverride.equals("0")) {
+            hasNavBar = true;
+        }
 
         float[] dims = {mDisplayMetrics.widthPixels, mDisplayMetrics.heightPixels};
         float degrees = getDegreesForRotation(mDisplay.getRotation());
