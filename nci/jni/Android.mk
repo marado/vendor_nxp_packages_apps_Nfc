@@ -45,6 +45,10 @@ LOCAL_SHARED_LIBRARIES := \
     libnfc-nci \
     libstlport
 
+ifneq ($(BOARD_HAVE_QCOM_NFC),true)
+         LOCAL_CFLAGS += -DFEATURE_STARTUP_CONFIG_FLAG
+endif
+
 LOCAL_STATIC_LIBRARIES := libxml2
 
 LOCAL_MODULE := libnfc_nci_jni

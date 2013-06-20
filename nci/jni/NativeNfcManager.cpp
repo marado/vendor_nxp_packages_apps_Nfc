@@ -1689,6 +1689,7 @@ void startRfDiscovery(bool isStart)
 *******************************************************************************/
 void doStartupConfig()
 {
+#if defined(FEATURE_STARTUP_CONFIG_FLAG)
     unsigned long num = 0;
     struct nfc_jni_native_data *nat = getNative(0, 0);
     tNFA_STATUS stat = NFA_STATUS_FAILED;
@@ -1754,6 +1755,7 @@ void doStartupConfig()
         if (stat == NFA_STATUS_OK)
             sNfaSetConfigEvent.wait ();
     }
+#endif /* End FEATURE_STARTUP_CONFIG_FLAG */
 }
 
 
