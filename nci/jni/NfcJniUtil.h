@@ -16,7 +16,7 @@
 
 #pragma once
 #undef LOG_TAG
-#define LOG_TAG "BrcmNfcJni"
+#define LOG_TAG "NfcJni"
 #include <JNIHelp.h>
 #include <jni.h>
 #include <pthread.h>
