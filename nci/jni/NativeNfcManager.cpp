@@ -113,7 +113,6 @@ static SyncEvent            sNfaEnableDisablePollingEvent;  //event for NFA_Enab
 static SyncEvent            sNfaSetConfigEvent;  // event for Set_Config....
 static SyncEvent            sNfaGetConfigEvent;  // event for Get_Config....
 static bool                 sIsNfaEnabled = false;
-static bool                 sIsNfccEnabled = true;
 static bool                 sDiscoveryEnabled = false;  //is polling for tag?
 static bool                 sIsDisabling = false;
 static bool                 sRfEnabled = false; // whether RF discovery is enabled
@@ -667,7 +666,6 @@ void nfaDeviceManagementCallback (UINT8 dmEvent, tNFA_DM_CBACK_DATA* eventData)
         break;
 
     case NFA_DM_NFCC_TRANSPORT_ERR_EVT:
-        sIsNfccEnabled = false;
     case NFA_DM_NFCC_TIMEOUT_EVT:
         {
             if (dmEvent == NFA_DM_NFCC_TIMEOUT_EVT)
@@ -1451,14 +1449,8 @@ static jboolean nfcManager_doActivateLlcp(JNIEnv*, jobject)
 static void nfcManager_doAbort(JNIEnv*, jobject)
 {
     ALOGE("%s: abort()", __FUNCTION__);
-    if (sIsNfccEnabled){
-        abort();
-    }else{
-        ALOGE("%s: wont abort() no nfcc", __FUNCTION__);
-    }
+    abort();
 }
-
-
 /*******************************************************************************
 **
 ** Function:        nfcManager_doDownload
