@@ -502,18 +502,24 @@ public class NfcService implements DeviceHostListener {
     int doOpenSecureElementConnection() {
         mEeWakeLock.acquire();
         try {
+            if (mEeWakeLock.isHeld())
+                mEeWakeLock.release();
             return mSecureElement.doOpenSecureElementConnection();
         } finally {
-            mEeWakeLock.release();
+            if (mEeWakeLock.isHeld())
+                mEeWakeLock.release();
         }
     }
 
     byte[] doTransceive(int handle, byte[] cmd) {
         mEeWakeLock.acquire();
         try {
+            if (mEeWakeLock.isHeld())
+                mEeWakeLock.release();
             return doTransceiveNoLock(handle, cmd);
         } finally {
-            mEeWakeLock.release();
+            if (mEeWakeLock.isHeld())
+                mEeWakeLock.release();
         }
     }
 
@@ -526,7 +532,8 @@ public class NfcService implements DeviceHostListener {
         try {
             mSecureElement.doDisconnect(handle);
         } finally {
-            mEeWakeLock.release();
+            if (mEeWakeLock.isHeld())
+                mEeWakeLock.release();
         }
     }
 
@@ -634,10 +641,14 @@ public class NfcService implements DeviceHostListener {
                     if (!mDeviceHost.initialize()) {
                         Log.w(TAG, "Error enabling NFC");
                         updateState(NfcAdapter.STATE_OFF);
+                        if (mRoutingWakeLock.isHeld())
+                            mRoutingWakeLock.release();
+                        watchDog.cancel();
                         return false;
                     }
                 } finally {
-                    mRoutingWakeLock.release();
+                    if (mRoutingWakeLock.isHeld())
+                        mRoutingWakeLock.release();
                 }
             } finally {
                 watchDog.cancel();
@@ -740,6 +751,8 @@ public class NfcService implements DeviceHostListener {
             try {
                 if (tempEnable && !enableInternal()) {
                     Log.w(TAG, "Could not enable NFC to wipe NFC-EE");
+                    if (mEeWakeLock.isHeld())
+                        mEeWakeLock.release();
                     return;
                 }
                 try {
@@ -750,6 +763,8 @@ public class NfcService implements DeviceHostListener {
                         handle = doOpenSecureElementConnection();
                         if (handle < 0) {
                             Log.w(TAG, "Could not open the secure element");
+                            if (mEeWakeLock.isHeld())
+                                mEeWakeLock.release();
                             return;
                         }
                         // TODO: remove this hack
@@ -782,7 +797,8 @@ public class NfcService implements DeviceHostListener {
                     }
                 }
             } finally {
-                mEeWakeLock.release();
+                if (mEeWakeLock.isHeld())
+                    mEeWakeLock.release();
             }
             Log.i(TAG, "SE wipe done");
         }
@@ -1660,6 +1676,7 @@ public class NfcService implements DeviceHostListener {
                             mDeviceHost.doDeselectSecureElement();
                         }
                     }
+                    watchDog.cancel();
                     return;
                 }
 
@@ -2079,7 +2096,8 @@ public class NfcService implements DeviceHostListener {
                 try {
                     applyRouting(false);
                 } finally {
-                    mRoutingWakeLock.release();
+                    if (mRoutingWakeLock.isHeld());
+                        mRoutingWakeLock.release();
                 }
                 return null;
             }
