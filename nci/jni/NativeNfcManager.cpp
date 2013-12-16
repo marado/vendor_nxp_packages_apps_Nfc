@@ -357,6 +357,9 @@ static void nfaConnectionCallback (UINT8 connEvent, tNFA_CONN_EVT_DATA* eventDat
         NfcTag::getInstance().setDeactivationState (eventData->deactivated);
         if (eventData->deactivated.type != NFA_DEACTIVATE_TYPE_SLEEP)
         {
+            UINT8 sIsWaiting = FALSE;
+            // Deactivation is done . Update waitstatus for nfcservice call to 0.
+            NfcTag::getInstance().WaitStatus(&sIsWaiting);
             {
                 SyncEventGuard g (gDeactivatedEvent);
                 gActivated = false; //guard this variable from multi-threaded access
