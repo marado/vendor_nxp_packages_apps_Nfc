@@ -734,6 +734,8 @@ TheEnd:
 *******************************************************************************/
 static jint nativeNfcTag_doHandleReconnect (JNIEnv *e, jobject o, jint targetHandle)
 {
+    uint8_t sIsWaiting = FALSE;
+    NfcTag::getInstance().WaitStatus(&sIsWaiting);
     ALOGD ("%s: targetHandle = %d", __FUNCTION__, targetHandle);
     return nativeNfcTag_doConnect (e, o, targetHandle);
 }
