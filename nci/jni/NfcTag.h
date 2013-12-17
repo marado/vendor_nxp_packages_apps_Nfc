@@ -297,6 +297,18 @@ public:
     *******************************************************************************/
     void setTransceiveTimeout (int techId, int timeout);
 
+    /*******************************************************************************
+    **
+    ** Function:        WaitStatus
+    **
+    ** Description:     update status whether nfcservice calls have invoked after
+    **                  host JNI reports tag activation data to it.
+    **
+    ** Returns:         void.
+    **
+    *******************************************************************************/
+    void WaitStatus(UINT8* status);
+
 
 private:
     std::vector<int> mTechnologyTimeoutsTable;
