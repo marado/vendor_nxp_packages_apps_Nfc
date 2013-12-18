@@ -259,5 +259,10 @@ public interface DeviceHost {
     boolean enableReaderMode(int technologies);
 
     boolean disableReaderMode();
+
     public void nfcShutdownReason(int reason);
+
+    public int getEeRoutingState();
+
+    public boolean getEeRoutingReloadAtReboot();
 }

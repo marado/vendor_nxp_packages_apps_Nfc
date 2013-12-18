@@ -1048,9 +1048,17 @@ void nfcManager_disableDiscovery (JNIEnv*, jobject)
 
     PeerToPeer::getInstance().enableP2pListening (false);
 
-    //if nothing is active after this, then tell the controller to power down
-    if (! PowerSwitch::getInstance ().setModeOff (PowerSwitch::DISCOVERY))
-        PowerSwitch::getInstance ().setLevel (PowerSwitch::LOW_POWER);
+    if(!sIsSecElemSelected)
+    {
+        //if nothing is active after this, then tell the controller to power down
+        if (! PowerSwitch::getInstance ().setModeOff (PowerSwitch::DISCOVERY))
+            PowerSwitch::getInstance ().setLevel (PowerSwitch::LOW_POWER);
+    }
+    else
+    {
+        //continue discovery if card emulation is enabled.
+        startRfDiscovery (true);
+    }
 
     // We may have had RF field notifications that did not cause
     // any activate/deactive events. For example, caused by wireless
@@ -1927,6 +1935,55 @@ static void nfcManager_doReportReason(JNIEnv *e, jobject o, jint shutdownReason)
     ALOGD ("%s: shutdownReason=%d", __FUNCTION__, shutdownReason);
     NFA_StoreShutdownReason (shutdownReason);
 }
+
+/*******************************************************************************
+**
+** Function:        nfcManager_doGetEeRoutingState
+**
+** Description:     Get EeRouting State value from the conf file.
+**                  e: JVM environment.
+**                  o: Java object.
+**
+** Returns:         EeRouting State.
+**
+*******************************************************************************/
+static jint nfcManager_doGetEeRoutingState(JNIEnv*, jobject)
+{
+    int num;
+
+    if (GetNumValue("CE_SCREEN_STATE_CONFIG", &num, sizeof(num)))
+       return num;
+    else
+       return 2;
+}
+
+
+/*******************************************************************************
+**
+** Function:        nfcManager_doGetEeRoutingReloadAtReboot
+**
+** Description:     Use conf file over prefs file at boot.
+**                  e: JVM environment.
+**                  o: Java object.
+**
+** Returns:         pick routing state from conf file at NFC Service load
+**
+*******************************************************************************/
+static jboolean nfcManager_doGetEeRoutingReloadAtReboot(JNIEnv*, jobject)
+{
+    int num;
+
+    if (GetNumValue("CE_SCREEN_STATE_CONFIG_LOAD_AT_BOOT", &num, sizeof(num)))
+    {
+        if( num==1)
+          return true;
+        else
+          return false;
+    }
+    else
+       return false;
+}
+
 /*****************************************************************************
 **
 ** JNI functions for android-4.0.1_r1
@@ -2020,8 +2077,15 @@ static JNINativeMethod gMethods[] =
 
     {"doDump", "()Ljava/lang/String;",
             (void *)nfcManager_doDump},
+
     {"doReportReason", "(I)V",
             (void *)nfcManager_doReportReason},
+
+    {"doGetEeRoutingState", "()I",
+            (void *)nfcManager_doGetEeRoutingState},
+
+    {"doGetEeRoutingReloadAtReboot", "()Z",
+            (void *)nfcManager_doGetEeRoutingReloadAtReboot},
 };
 
 

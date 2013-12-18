@@ -105,6 +105,25 @@ public class NativeNfcManager implements DeviceHost {
     public void nfcShutdownReason(int reason) {
           doReportReason(reason);
     }
+
+    private native int doGetEeRoutingState();
+
+    @Override
+    public int getEeRoutingState()
+    {
+          int num =doGetEeRoutingState();
+          return num;
+    }
+
+    private native boolean doGetEeRoutingReloadAtReboot();
+
+    @Override
+    public boolean getEeRoutingReloadAtReboot()
+    {
+          boolean reload =doGetEeRoutingReloadAtReboot();
+          return reload;
+    }
+
     private native boolean doDeinitialize();
 
     @Override

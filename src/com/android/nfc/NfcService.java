@@ -112,6 +112,7 @@ public class NfcService implements DeviceHostListener {
     static final String PREF_FIRST_BOOT = "first_boot";
     static final String PREF_AIRPLANE_OVERRIDE = "airplane_override";
     static final boolean SE_BROADCASTS_WITH_HCE = true;
+    static final String PREF_EE_ROUTING_STATE= "ee_routing_state";
 
     static final int MSG_NDEF_TAG = 0;
     static final int MSG_CARD_EMULATION = 1;
@@ -137,15 +138,18 @@ public class NfcService implements DeviceHostListener {
     static final int TASK_EE_WIPE = 4;
 
     // Screen state, used by mScreenState
-    static final int SCREEN_STATE_UNKNOWN = 0;
-    static final int SCREEN_STATE_OFF = 1;
-    static final int SCREEN_STATE_ON_LOCKED = 2;
-    static final int SCREEN_STATE_ON_UNLOCKED = 3;
+    static final int SCREEN_STATE_UNKNOWN = 5;
+    static final int SCREEN_STATE_OFF = 4;
+    static final int SCREEN_STATE_ON_LOCKED = 3;
+    static final int SCREEN_STATE_ON_UNLOCKED = 2;
 
     // Copied from com.android.nfc_extras to avoid library dependency
     // Must keep in sync with com.android.nfc_extras
     static final int ROUTE_OFF = 1;
-    static final int ROUTE_ON_WHEN_SCREEN_ON = 2;
+    static final int ROUTE_ON_WHEN_SCREEN_ON_UNLOCKED = 2;
+    static final int ROUTE_ON_WHEN_SCREEN_ON =3;
+    static final int ROUTE_ON_ALLWAYS= 4;
+
 
     // Return values from NfcEe.open() - these are 1:1 mapped
     // to the thrown EE_EXCEPTION_ exceptions in nfc-extras.
@@ -755,6 +759,24 @@ public class NfcService implements DeviceHostListener {
             initSoundPool();
 
             /* Start polling loop */
+            if (mState == NfcAdapter.STATE_ON) {
+                if(mDeviceHost.getEeRoutingReloadAtReboot()) {
+		    Log.d(TAG, "getting mEeRoutingState from conf file:"
+                           + mDeviceHost.getEeRoutingState() +", "+ mEeRoutingState);
+                    mPrefsEditor.putInt(PREF_EE_ROUTING_STATE,mDeviceHost.getEeRoutingState());
+                    mEeRoutingState = mDeviceHost.getEeRoutingState();
+                }
+                else {
+		    Log.d(TAG, "getting mEeRoutingState from mPrefsEditor"
+                           + mDeviceHost.getEeRoutingState() +", "+ mEeRoutingState);
+                    mEeRoutingState =mPrefs.getInt(PREF_EE_ROUTING_STATE, mDeviceHost.getEeRoutingState());
+                }
+
+		Log.d(TAG, "recording mEeRoutingState in mPrefsEditor"
+                       + mDeviceHost.getEeRoutingState() +", "+ mEeRoutingState);
+                mPrefsEditor.putInt(PREF_EE_ROUTING_STATE,mEeRoutingState);
+                mPrefsEditor.apply();
+            }
 
             applyRouting(true);
             return true;
@@ -1880,7 +1902,7 @@ public class NfcService implements DeviceHostListener {
                      * The async LLCP callback will crash since the routing code
                      * is overwriting globals it relies on.
                      */
-                    if (POLLING_MODE > SCREEN_STATE_OFF) {
+                    if (POLLING_MODE < SCREEN_STATE_OFF) {
                         if (force || mNfcPollingEnabled) {
                             Log.d(TAG, "NFC-C OFF, disconnect");
                             mNfcPollingEnabled = false;
@@ -1912,8 +1934,7 @@ public class NfcService implements DeviceHostListener {
                 }
 
                 // configure NFC-EE routing
-                if (mScreenState >= SCREEN_STATE_ON_LOCKED &&
-                        mEeRoutingState == ROUTE_ON_WHEN_SCREEN_ON) {
+                if (mScreenState <= mEeRoutingState ) {
                     if (force || !mNfceeRouteEnabled) {
                         if (mDeviceHost.doSelectSecureElement()) {
                             Log.d(TAG, "NFC-EE ON");
@@ -1934,7 +1955,7 @@ public class NfcService implements DeviceHostListener {
                 }
 
                 // configure NFC-C polling
-                if (mScreenState >= POLLING_MODE) {
+                if (mScreenState <= POLLING_MODE) {
                     if (force || !mNfcPollingEnabled) {
                         Log.d(TAG, "NFC-C ON");
                         mNfcPollingEnabled = true;
@@ -1948,7 +1969,7 @@ public class NfcService implements DeviceHostListener {
                         mReaderModeEnabled = false;
                         mDeviceHost.disableReaderMode();
                     }
-                } else if (mInProvisionMode && mScreenState >= SCREEN_STATE_ON_LOCKED) {
+                } else if (mInProvisionMode && mScreenState <= SCREEN_STATE_ON_LOCKED) {
                     // Special case for setup provisioning
                     if (!mNfcPollingEnabled) {
                         Log.d(TAG, "NFC-C ON");
