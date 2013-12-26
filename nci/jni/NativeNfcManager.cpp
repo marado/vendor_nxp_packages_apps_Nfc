@@ -738,7 +738,8 @@ void nfaDeviceManagementCallback (UINT8 dmEvent, tNFA_DM_CBACK_DATA* eventData)
             ALOGE ("%s: crash NFC service", __FUNCTION__);
             //////////////////////////////////////////////
             //crash the NFC service process so it can restart automatically
-            abort ();
+            //don't want to repeatedly crash the service if the hardware isn't there.
+            //abort ();
             //////////////////////////////////////////////
         }
         break;
