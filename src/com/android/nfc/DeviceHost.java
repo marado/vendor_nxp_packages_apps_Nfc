@@ -205,7 +205,7 @@ public interface DeviceHost {
 
     public int[] doGetSecureElementList();
 
-    public void doSelectSecureElement();
+    public boolean doSelectSecureElement();
 
     public void doDeselectSecureElement();
 
