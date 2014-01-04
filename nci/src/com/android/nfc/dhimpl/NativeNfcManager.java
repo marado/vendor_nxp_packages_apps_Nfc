@@ -148,7 +148,7 @@ public class NativeNfcManager implements DeviceHost {
     public native int[] doGetSecureElementList();
 
     @Override
-    public native void doSelectSecureElement();
+    public native boolean doSelectSecureElement();
 
     @Override
     public native void doDeselectSecureElement();

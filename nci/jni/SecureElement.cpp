@@ -293,7 +293,9 @@ bool SecureElement::getEeInfo()
             {
                 for (UINT8 xx = 0; xx < mActualNumEe; xx++)
                 {
+#ifdef NCI_VIRTUAL_NFCEE_SUPPORTED
                     if ((mEeInfo[xx].num_interface != 0) && (mEeInfo[xx].ee_interface[0] != NCI_NFCEE_INTERFACE_HCI_ACCESS) )
+#endif
                         mNumEePresent++;
 
                     ALOGD ("%s: EE[%u] Handle: 0x%04x  Status: %s  Num I/f: %u: (0x%02x, 0x%02x)  Num TLVs: %u",
@@ -476,7 +478,7 @@ bool SecureElement::activate (jint seID)
     {
         tNFA_EE_INFO& eeItem = mEeInfo[index];
 
-        if ((eeItem.ee_handle == EE_HANDLE_0xF3) || (eeItem.ee_handle == EE_HANDLE_0xF4))
+        if ((eeItem.ee_handle == EE_HANDLE_SWP1) || (eeItem.ee_handle == EE_HANDLE_SWP2))
         {
             if (overrideEeHandle && (overrideEeHandle != eeItem.ee_handle) )
                 continue;   // do not enable all SEs; only the override one
@@ -686,7 +688,7 @@ bool SecureElement::connectEE ()
         // pipe/gate num was not specifed by app, get from config file
         mNewPipeId     = 0;
 
-        // Construct the PIPE name based on the EE handle (e.g. NFA_HCI_STATIC_PIPE_ID_F3 for UICC0).
+        // Construct the PIPE name based on the EE handle (e.g. NFA_HCI_STATIC_PIPE_ID_01 for UICC0).
         snprintf (pipeConfName, sizeof(pipeConfName), "NFA_HCI_STATIC_PIPE_ID_%02X", eeHandle & NFA_HANDLE_MASK);
 
         if (GetNumValue(pipeConfName, &num, sizeof(num)) && (num != 0))
@@ -715,8 +717,8 @@ bool SecureElement::connectEE ()
     // If the .conf file had a static pipe to use, just use it.
     if (mNewPipeId != 0)
     {
-        UINT8 host = (mNewPipeId == STATIC_PIPE_0x70) ? 0x02 : 0x03;
-        UINT8 gate = (mNewPipeId == STATIC_PIPE_0x70) ? 0xF0 : 0xF1;
+        UINT8 host = 0x02;
+        UINT8 gate = 0xF0;
         nfaStat = NFA_HciAddStaticPipe(mNfaHciHandle, host, gate, mNewPipeId);
         if (nfaStat != NFA_STATUS_OK)
         {
@@ -945,8 +947,8 @@ bool SecureElement::transceive (UINT8* xmitBuffer, INT32 xmitBufferSize, UINT8* 
         SyncEventGuard guard (mTransceiveEvent);
         mActualResponseSize = 0;
         memset (mResponseData, 0, sizeof(mResponseData));
-        if ((mNewPipeId == STATIC_PIPE_0x70) || (mNewPipeId == STATIC_PIPE_0x71))
-            nfaStat = NFA_HciSendEvent (mNfaHciHandle, mNewPipeId, EVT_SEND_DATA, xmitBufferSize, xmitBuffer, sizeof(mResponseData), mResponseData, timeoutMillisec);
+        if (mNewPipeId == STATIC_PIPE_0x72) // if this is static pipe for APDU exchange
+            nfaStat = NFA_HciSendEvent (mNfaHciHandle, mNewPipeId, EVT_SEND_DATA, xmitBufferSize, xmitBuffer, sizeof(mResponseData), mResponseData, 0);
         else
             nfaStat = NFA_HciSendEvent (mNfaHciHandle, mNewPipeId, NFA_HCI_EVT_POST_DATA, xmitBufferSize, xmitBuffer, sizeof(mResponseData), mResponseData, timeoutMillisec);
         if (nfaStat == NFA_STATUS_OK)
@@ -1168,7 +1170,11 @@ bool SecureElement::getSeVerInfo(int seIndex, char * verInfo, int verInfoSz, UIN
 
     *seid = mEeInfo[seIndex].ee_handle;
 
-    if ((mEeInfo[seIndex].num_interface == 0) || (mEeInfo[seIndex].ee_interface[0] == NCI_NFCEE_INTERFACE_HCI_ACCESS) )
+    if ((mEeInfo[seIndex].num_interface == 0)
+#ifdef NCI_VIRTUAL_NFCEE_SUPPORTED
+         || (mEeInfo[seIndex].ee_interface[0] == NCI_NFCEE_INTERFACE_HCI_ACCESS)
+#endif
+       )
     {
         return false;
     }
@@ -1176,9 +1182,9 @@ bool SecureElement::getSeVerInfo(int seIndex, char * verInfo, int verInfoSz, UIN
     strncpy(verInfo, "Version info not available", verInfoSz-1);
     verInfo[verInfoSz-1] = '\0';
 
-    UINT8 pipe = (mEeInfo[seIndex].ee_handle == EE_HANDLE_0xF3) ? 0x70 : 0x71;
-    UINT8 host = (pipe == STATIC_PIPE_0x70) ? 0x02 : 0x03;
-    UINT8 gate = (pipe == STATIC_PIPE_0x70) ? 0xF0 : 0xF1;
+    UINT8 pipe = STATIC_PIPE_0x72;
+    UINT8 host = 0x02; // host in UICC/eSE
+    UINT8 gate = 0xF0; // gate id is not important on static pipe
 
     tNFA_STATUS nfaStat = NFA_HciAddStaticPipe(mNfaHciHandle, host, gate, pipe);
     if (nfaStat != NFA_STATUS_OK)
@@ -1314,7 +1320,7 @@ void SecureElement::nfaHciCallback (tNFA_HCI_EVT event, tNFA_HCI_EVT_DATA* event
     case NFA_HCI_GET_REG_RSP_EVT :
         ALOGD ("%s: NFA_HCI_GET_REG_RSP_EVT; status: 0x%X; pipe: 0x%X, len: %d", fn,
                 eventData->registry.status, eventData->registry.pipe, eventData->registry.data_len);
-        if (eventData->registry.data_len >= 19 && ((eventData->registry.pipe == STATIC_PIPE_0x70) || (eventData->registry.pipe == STATIC_PIPE_0x71)))
+        if (eventData->registry.data_len >= 19 && (eventData->registry.pipe == STATIC_PIPE_0x72))
         {
             SyncEventGuard guard (sSecElem.mVerInfoEvent);
             // Oberthur OS version is in bytes 16,17, and 18
@@ -1328,12 +1334,21 @@ void SecureElement::nfaHciCallback (tNFA_HCI_EVT event, tNFA_HCI_EVT_DATA* event
     case NFA_HCI_EVENT_RCVD_EVT:
         ALOGD ("%s: NFA_HCI_EVENT_RCVD_EVT; code: 0x%X; pipe: 0x%X; data len: %u", fn,
                 eventData->rcvd_evt.evt_code, eventData->rcvd_evt.pipe, eventData->rcvd_evt.evt_len);
-        if ((eventData->rcvd_evt.pipe == STATIC_PIPE_0x70) || (eventData->rcvd_evt.pipe == STATIC_PIPE_0x71))
+
+        if (eventData->rcvd_evt.pipe == STATIC_PIPE_0x72)
         {
-            ALOGD ("%s: NFA_HCI_EVENT_RCVD_EVT; data from static pipe", fn);
-            SyncEventGuard guard (sSecElem.mTransceiveEvent);
-            sSecElem.mActualResponseSize = (eventData->rcvd_evt.evt_len > MAX_RESPONSE_SIZE) ? MAX_RESPONSE_SIZE : eventData->rcvd_evt.evt_len;
-            sSecElem.mTransceiveEvent.notifyOne ();
+            if (eventData->rcvd_evt.evt_code == 0x10)
+            {
+                ALOGD ("%s: NFA_HCI_EVENT_RCVD_EVT; data from static pipe", fn);
+                SyncEventGuard guard (sSecElem.mTransceiveEvent);
+                sSecElem.mActualResponseSize = (eventData->rcvd_evt.evt_len > MAX_RESPONSE_SIZE) ? MAX_RESPONSE_SIZE : eventData->rcvd_evt.evt_len;
+                sSecElem.mTransceiveEvent.notifyOne ();
+            }
+            else if (eventData->rcvd_evt.evt_code == 0x11)
+            {
+                ALOGD ("%s: NFA_HCI_EVENT_RCVD_EVT; EVT_WTX_REQUEST from static pipe", fn);
+                //TODO, need to implement to extend timeout
+            }
         }
         else if (eventData->rcvd_evt.evt_code == NFA_HCI_EVT_POST_DATA)
         {
@@ -1406,7 +1421,9 @@ tNFA_HANDLE SecureElement::getDefaultEeHandle ()
         if (mActiveSeOverride && (overrideEeHandle != mEeInfo[xx].ee_handle))
             continue; //skip all the EE's that are ignored
         if ((mEeInfo[xx].num_interface != 0) &&
+#ifdef NCI_VIRTUAL_NFCEE_SUPPORTED
             (mEeInfo[xx].ee_interface[0] != NCI_NFCEE_INTERFACE_HCI_ACCESS) &&
+#endif
             (mEeInfo[xx].ee_status != NFC_NFCEE_STATUS_INACTIVE))
             return (mEeInfo[xx].ee_handle);
     }
