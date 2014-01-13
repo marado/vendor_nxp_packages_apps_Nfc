@@ -245,6 +245,12 @@ public class NfcService implements DeviceHostListener {
     // and the default AsyncTask thread so it is read unprotected from that
     // thread
     int mState;  // one of NfcAdapter.STATE_ON, STATE_TURNING_ON, etc
+    int mIsNfcDisabledReason;
+
+    // TO keep track who is disabling nfc
+    static final int NFC_DISABLED_BY_SYSTEM = 0;
+    static final int NFC_DISABLED_BY_USER = 1;
+    static final int NFC_DISABLED_BY_AIRPLANEMODE = 2;
 
     // fields below are final after onCreate()
     Context mContext;
@@ -812,6 +818,12 @@ public class NfcService implements DeviceHostListener {
             maybeDisconnectTarget();
 
             mNfcDispatcher.setForegroundDispatch(null, null, null);
+            if(isAirplaneModeOn())
+            {
+                Log.d(TAG, "NFC_DISABLED_BY_AIRPLANEMODE : " + mIsNfcDisabledReason);
+                mIsNfcDisabledReason = NFC_DISABLED_BY_AIRPLANEMODE;
+            }
+            mDeviceHost.nfcShutdownReason(mIsNfcDisabledReason);
 
             boolean result = mDeviceHost.deinitialize();
             if (DBG) Log.d(TAG, "mDeviceHost.deinitialize() = " + result);
@@ -955,9 +967,13 @@ public class NfcService implements DeviceHostListener {
             NfcService.enforceAdminPerm(mContext);
 
             if (saveState) {
+                mIsNfcDisabledReason = NFC_DISABLED_BY_USER;
                 saveNfcOnSetting(false);
             }
-
+            else
+            {
+                mIsNfcDisabledReason = NFC_DISABLED_BY_SYSTEM;
+            }
             new EnableDisableTask().execute(TASK_DISABLE);
 
             return true;
