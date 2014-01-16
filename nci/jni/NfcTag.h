@@ -233,6 +233,19 @@ public:
     *******************************************************************************/
     bool isNdefDetectionTimedOut ();
 
+    /*******************************************************************************
+    **
+    ** Function:        WaitStatus
+    **
+    ** Description:     update status whether nfcservice calls have invoked after
+    **                  host JNI reports tag activation data to it.
+    **
+    ** Returns:         void.
+    **
+    *******************************************************************************/
+    void WaitStatus(UINT8* status);
+
+
 private:
     nfc_jni_native_data* mNativeData;
     ActivationState mActivationState;

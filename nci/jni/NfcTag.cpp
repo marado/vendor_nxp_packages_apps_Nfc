@@ -22,12 +22,19 @@
 #include "JavaClassConstants.h"
 #include <ScopedLocalRef.h>
 #include <ScopedPrimitiveArray.h>
+#include "IntervalTimer.h"
+#include "Mutex.h"
 
 extern "C"
 {
     #include "rw_int.h"
 }
 
+/*timer to deactivate nfcc back in idle if no further calls form
+  nfcservice when activation data has been already sent to it*/
+static IntervalTimer sWaitTimer;
+static Mutex sWaitMutex;
+UINT8 sIsWaiting;
 
 /*******************************************************************************
 **
@@ -55,6 +62,45 @@ NfcTag::NfcTag ()
     memset(mLastKovioUid, 0, NFC_KOVIO_MAX_LEN);
 }
 
+/*******************************************************************************
+**
+** Function:        WaitStatus
+**
+** Description:     update status whether nfcservice calls have invoked after
+**                  host JNI reports tag activation data to it.
+**
+** Returns:         void.
+**
+*******************************************************************************/
+void NfcTag::WaitStatus (UINT8* status)
+{
+    ALOGD ("%s status = %d", __FUNCTION__,*status);
+    sIsWaiting = *status;
+}
+
+/************************************************************************************
+**
+** Function:        WaitTimerCallback
+**
+** Description:     Callback function for timer waiting for nfcservice instruction.
+**
+** Returns:         None
+**
+***********************************************************************************/
+static void WaitTimerCallback (union sigval)
+{
+    ALOGD ("%s : enter sIsWaiting = %d", __FUNCTION__,sIsWaiting);
+
+    if(sIsWaiting == TRUE)
+    {
+        sIsWaiting  = FALSE;
+        NFA_Deactivate (FALSE);
+    }
+    /*sWaitMutex.lock ();
+    sWaitTimer.kill ();
+    sWaitMutex.unlock ();*/
+    ALOGD ("%s : exit sIsWaiting = %d", __FUNCTION__,sIsWaiting);
+}
 
 /*******************************************************************************
 **
@@ -541,6 +587,11 @@ void NfcTag::createNativeNfcTag (tNFA_ACTIVATED& activationData)
         ALOGE ("%s: fail notify nfc service", fn);
     }
 
+    sWaitMutex.lock ();
+    sWaitTimer.kill ();
+    sWaitTimer.set (100, WaitTimerCallback);
+    sIsWaiting = 1;
+    sWaitMutex.unlock ();
     ALOGD ("%s: exit", fn);
 }
 
