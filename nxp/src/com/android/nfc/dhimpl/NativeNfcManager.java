@@ -460,4 +460,13 @@ public class NativeNfcManager implements DeviceHost {
 
     public void nfcShutdownReason(int reason){}
 
+    public int getEeRoutingState()
+    {
+        return 2; //SCREEN_STATE_ON_UNLOCKED
+    }
+
+    public boolean getEeRoutingReloadAtReboot()
+    {
+        return false;
+    }
 }
