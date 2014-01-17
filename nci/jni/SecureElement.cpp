@@ -953,12 +953,22 @@ bool SecureElement::transceive (UINT8* xmitBuffer, INT32 xmitBufferSize, UINT8* 
             nfaStat = NFA_HciSendEvent (mNfaHciHandle, mNewPipeId, NFA_HCI_EVT_POST_DATA, xmitBufferSize, xmitBuffer, sizeof(mResponseData), mResponseData, timeoutMillisec);
         if (nfaStat == NFA_STATUS_OK)
         {
-            waitOk = mTransceiveEvent.wait (timeoutMillisec);
-            if (waitOk == false) //timeout occurs
-            {
-                ALOGE ("%s: wait response timeout", fn);
-                goto TheEnd;
-            }
+            do {
+                mReceivedWtx = false;
+                waitOk = mTransceiveEvent.wait (timeoutMillisec);
+                if (waitOk == false) //timeout occurs
+                {
+                    if (mReceivedWtx == false)
+                    {
+                        ALOGE ("%s: wait response timeout", fn);
+                        goto TheEnd;
+                    }
+                }
+                else
+                {
+                    mReceivedWtx = false; // clear and exit from loop
+                }
+            } while (mReceivedWtx);
         }
         else
         {
@@ -1347,7 +1357,7 @@ void SecureElement::nfaHciCallback (tNFA_HCI_EVT event, tNFA_HCI_EVT_DATA* event
             else if (eventData->rcvd_evt.evt_code == 0x11)
             {
                 ALOGD ("%s: NFA_HCI_EVENT_RCVD_EVT; EVT_WTX_REQUEST from static pipe", fn);
-                //TODO, need to implement to extend timeout
+                sSecElem.mReceivedWtx = true;
             }
         }
         else if (eventData->rcvd_evt.evt_code == NFA_HCI_EVT_POST_DATA)

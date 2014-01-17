@@ -421,6 +421,7 @@ private:
     Mutex           mMutex; // protects fields below
     bool            mRfFieldIsOn; // last known RF field state
     struct timespec mLastRfFieldToggle; // last time RF field went off
+    bool            mReceivedWtx; // true if received WTX request from UICC
     /*******************************************************************************
     **
     ** Function:        SecureElement
