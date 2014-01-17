@@ -1915,9 +1915,15 @@ public class NfcService implements DeviceHostListener {
                 if (mScreenState >= SCREEN_STATE_ON_LOCKED &&
                         mEeRoutingState == ROUTE_ON_WHEN_SCREEN_ON) {
                     if (force || !mNfceeRouteEnabled) {
-                        Log.d(TAG, "NFC-EE ON");
-                        mNfceeRouteEnabled = true;
-                        mDeviceHost.doSelectSecureElement();
+                        if (mDeviceHost.doSelectSecureElement()) {
+                            Log.d(TAG, "NFC-EE ON");
+                            mNfceeRouteEnabled = true;
+                        }
+                        else {
+                            Log.d(TAG, "NFC-EE OFF: failed to select SE");
+                            mNfceeRouteEnabled = false;
+                            mEeRoutingState = ROUTE_OFF;
+                        }
                     }
                 } else {
                     if (force ||  mNfceeRouteEnabled) {
