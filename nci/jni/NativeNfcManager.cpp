@@ -1137,18 +1137,62 @@ void enableDisableLptd (bool enable)
     return;
 }
 
+#ifndef CONFIG_UICC_IDLE_TIMEOUT_SUPPORTED
+void sendVscCallback (UINT8 event, UINT16 param_len, UINT8 *p_param)
+{
+    SyncEventGuard guard (sNfaGetConfigEvent);
+    if ((param_len >= 4)&&(*(p_param + 3) == NFA_STATUS_OK))
+    {
+        ALOGD("%s: event = 0x%x success", __FUNCTION__, event);
+    }
+    else
+    {
+        ALOGE("%s: event = 0x%x failed", __FUNCTION__, event);
+    }
+    sNfaGetConfigEvent.notifyOne();
+}
+#endif
+
 void setUiccIdleTimeout (bool enable)
 {
     // This method is *NOT* thread-safe. Right now
     // it is only called from the same thread so it's
     // not an issue.
     tNFA_STATUS stat = NFA_STATUS_OK;
-    UINT8 swp_cfg_byte0 = 0x00;
 
 #ifndef CONFIG_UICC_IDLE_TIMEOUT_SUPPORTED
-    return;
-#endif
+    UINT8 cmd_params[5];
 
+    ALOGD("%s: enable = %d", __FUNCTION__, enable);
+
+    cmd_params[0] = 0x0A; // Command
+    cmd_params[1] = 0x01; // number of TLV
+    if (enable)
+        cmd_params[2] = 0x01; // enable
+    else
+        cmd_params[2] = 0x00; // disable
+
+    cmd_params[3] = 0x01;     // length
+    cmd_params[4] = (SecureElement::getInstance().mActiveEeHandle & 0x00FF);     // NFCEE ID
+
+    {
+        SyncEventGuard guard (sNfaGetConfigEvent);
+        stat = NFA_SendVsCommand (0x01, // oid
+                                  0x05, // cmd_params_len,
+                                  cmd_params,
+                                  sendVscCallback);
+
+        if (stat != NFA_STATUS_OK)
+        {
+            ALOGE("%s: NFA_SendVsCommand failed", __FUNCTION__);
+            return;
+        }
+        sNfaGetConfigEvent.wait ();
+    }
+    return;
+#else
+
+    UINT8 swp_cfg_byte0 = 0x00;
     {
         SyncEventGuard guard (sNfaGetConfigEvent);
         tNFA_PMID configParam[1] = {0xC2};
@@ -1178,6 +1222,7 @@ void setUiccIdleTimeout (bool enable)
     else
         ALOGE("%s: Could not configure UICC idle timeout feature", __FUNCTION__);
     return;
+#endif
 }
 /*******************************************************************************
 **
