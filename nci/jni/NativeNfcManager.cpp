@@ -15,6 +15,7 @@
  */
 
 #include <semaphore.h>
+#include <unistd.h>
 #include <errno.h>
 #include "OverrideLog.h"
 #include "NfcJniUtil.h"
@@ -41,7 +42,7 @@ extern "C"
     #include "nfc_brcm_defs.h"
     #include "ce_api.h"
 }
-
+#define NFCSERVICE_WATCHDOG_TIMER_EXPIRED 4
 extern UINT8 *p_nfa_dm_start_up_cfg;
 extern const UINT8 nfca_version_string [];
 extern const UINT8 nfa_version_string [];
@@ -152,7 +153,7 @@ static UINT16 sCurrentConfigLen;
 static UINT8 sConfig[256];
 static UINT8 sLongGuardTime[] = { 0x00, 0x20 };
 static UINT8 sDefaultGuardTime[] = { 0x00, 0x11 };
-
+bool sIsDeviceReset = false;
 /////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////
 
@@ -552,6 +553,8 @@ static jboolean nfcManager_initNativeStruc (JNIEnv* e, jobject o)
         return JNI_FALSE;
     }
 
+    // Set sIsDeviceReset to tru to indicate in further calls that it is device reset.
+    sIsDeviceReset = true;
     memset (nat, 0, sizeof(*nat));
     e->GetJavaVM(&(nat->vm));
     nat->env_version = e->GetVersion();
@@ -852,6 +855,8 @@ static jboolean nfcManager_doInitialize (JNIEnv* e, jobject o)
 
             NFA_Init (halFuncEntries);
 
+            NFA_CheckDeviceResetStatus(sIsDeviceReset);
+            sIsDeviceReset = false;
             stat = NFA_Enable (nfaDeviceManagementCallback, nfaConnectionCallback);
             if (stat == NFA_STATUS_OK)
             {
@@ -1006,13 +1011,22 @@ static void nfcManager_enableDiscovery (JNIEnv* e, jobject o)
 *******************************************************************************/
 void nfcManager_disableDiscovery (JNIEnv*, jobject)
 {
+    UINT32 nfc_screen_off_polling_on = 0;
     tNFA_STATUS status = NFA_STATUS_OK;
+    UINT8            cmd_params_len = 0;
+    UINT8            *p_cmd_params = NULL;
+    UINT8            oid = 0x3;
     ALOGD ("%s: enter;", __FUNCTION__);
-
+    GetNumValue("NFC_SCREEN_OFF_POLL_ON", &nfc_screen_off_polling_on, sizeof(nfc_screen_off_polling_on));
+    if(nfc_screen_off_polling_on == 0x01)
+    {
+        goto TheEnd;
+    }
     pn544InteropAbortNow ();
     if (sDiscoveryEnabled == false)
     {
         ALOGD ("%s: already disabled", __FUNCTION__);
+        NFA_SendVsCommand(oid, cmd_params_len, p_cmd_params, NULL);
         goto TheEnd;
     }
 
@@ -1673,6 +1687,9 @@ static jboolean nfcManager_doActivateLlcp(JNIEnv*, jobject)
 static void nfcManager_doAbort(JNIEnv*, jobject)
 {
     ALOGE("%s: abort()", __FUNCTION__);
+    /*Watchdog expired .nfcservice being aborted.Inform ncihal*/
+    NFA_StoreShutdownReason(NFCSERVICE_WATCHDOG_TIMER_EXPIRED);
+    usleep(100);
     abort();
 }
 
@@ -1879,6 +1896,23 @@ static void nfcManager_doDisableReaderMode (JNIEnv* e, jobject o)
 }
 
 
+/********************************************************************************************************
+**
+** Function:        nfcManager_doReportReason
+**
+** Description:     Gets reason of Shutdown from Java layer(Shutdown due to NFC disabled by User or not)
+**                  e: JVM environment.
+**                  o: Java object.
+**                  shutdownReason: if 1 - NFC disabled by User otherwise 0.
+**
+** Returns:         None.
+**
+******************************************************************************************************/
+static void nfcManager_doReportReason(JNIEnv *e, jobject o, jint shutdownReason)
+{
+    ALOGD ("%s: shutdownReason=%d", __FUNCTION__, shutdownReason);
+    NFA_StoreShutdownReason (shutdownReason);
+}
 /*****************************************************************************
 **
 ** JNI functions for android-4.0.1_r1
@@ -1972,6 +2006,8 @@ static JNINativeMethod gMethods[] =
 
     {"doDump", "()Ljava/lang/String;",
             (void *)nfcManager_doDump},
+    {"doReportReason", "(I)V",
+            (void *)nfcManager_doReportReason},
 };
 
 
