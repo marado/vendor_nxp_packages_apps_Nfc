@@ -413,7 +413,6 @@ private:
     SyncEvent       mTransceiveEvent;
     SyncEvent       mVerInfoEvent;
     SyncEvent       mRegistryEvent;
-    SyncEvent       mHciSentEvent;
     UINT8           mVerInfo [3];
     UINT8           mResponseData [MAX_RESPONSE_SIZE];
     RouteDataSet    mRouteDataSet; //routing data
@@ -423,8 +422,6 @@ private:
     bool            mRfFieldIsOn; // last known RF field state
     struct timespec mLastRfFieldToggle; // last time RF field went off
     bool            mReceivedWtx; // true if received WTX request from UICC
-    bool            mReadingVendorName; // true if reading vendor name from identity management gate
-    char            mVendorName[21];    // UICC vendor name
     /*******************************************************************************
     **
     ** Function:        SecureElement
