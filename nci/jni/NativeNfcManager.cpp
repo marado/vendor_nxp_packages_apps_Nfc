@@ -1140,16 +1140,51 @@ void enableDisableLptd (bool enable)
 #ifndef CONFIG_UICC_IDLE_TIMEOUT_SUPPORTED
 void sendVscCallback (UINT8 event, UINT16 param_len, UINT8 *p_param)
 {
+    UINT8 oid = (event & 0x3F);
     SyncEventGuard guard (sNfaGetConfigEvent);
-    if ((param_len >= 4)&&(*(p_param + 3) == NFA_STATUS_OK))
+
+    if ((event & 0xC0) == NCI_RSP_BIT)
     {
-        ALOGD("%s: event = 0x%x success", __FUNCTION__, event);
+        if ((oid == 0x01)||(oid == 0x05))
+        {
+            if ((param_len >= 4)&&(*(p_param + 3) == NFA_STATUS_OK))
+            {
+                ALOGD("%s: event = 0x%x success", __FUNCTION__, event);
+            }
+            else
+            {
+                ALOGE("%s: event = 0x%x failed", __FUNCTION__, event);
+            }
+            sNfaGetConfigEvent.notifyOne();
+        }
+        else if (oid == 0x04)
+        {
+            if ((param_len >= 4)&&(*(p_param + 3) == NFA_STATUS_OK))
+            {
+                ALOGD("%s: event = 0x%x success", __FUNCTION__, event);
+            }
+            else
+            {
+                ALOGE("%s: event = 0x%x failed", __FUNCTION__, event);
+                sNfaGetConfigEvent.notifyOne(); // don't wait for NTF
+            }
+        }
     }
-    else
+    else if ((event & 0xC0) == NCI_NTF_BIT)
     {
-        ALOGE("%s: event = 0x%x failed", __FUNCTION__, event);
+        if (oid == 0x04)
+        {
+            if ((param_len >= 4)&&(*(p_param + 3) == NFA_STATUS_OK))
+            {
+                ALOGD("%s: event = 0x%x success", __FUNCTION__, event);
+            }
+            else
+            {
+                ALOGE("%s: event = 0x%x failed", __FUNCTION__, event);
+            }
+            sNfaGetConfigEvent.notifyOne();
+        }
     }
-    sNfaGetConfigEvent.notifyOne();
 }
 #endif
 
@@ -1188,6 +1223,38 @@ void setUiccIdleTimeout (bool enable)
             return;
         }
         sNfaGetConfigEvent.wait ();
+    }
+
+    if (!enable)
+    {
+        SyncEventGuard guard (sNfaGetConfigEvent);
+
+        cmd_params[0] = (SecureElement::getInstance().mActiveEeHandle & 0x00FF);     // NFCEE ID
+
+        stat = NFA_SendVsCommand (0x04, // oid
+                                  0x01, // cmd_params_len,
+                                  cmd_params,
+                                  sendVscCallback);
+
+        if (stat == NFA_STATUS_OK)
+        {
+            stat = NFA_RegVSCback (true, sendVscCallback);
+            if (stat != NFA_STATUS_OK)
+            {
+                ALOGE("%s: NFA_RegVSCback failed", __FUNCTION__);
+                return;
+            }
+        }
+        else
+        {
+            ALOGE("%s: NFA_SendVsCommand failed", __FUNCTION__);
+            return;
+        }
+        sNfaGetConfigEvent.wait (1000); // continue even if no NTF
+        NFA_RegVSCback (false, sendVscCallback);
+
+        ALOGD("%s: Start delay", __FUNCTION__);
+        sNfaGetConfigEvent.wait (40); // let add delay
     }
     return;
 #else

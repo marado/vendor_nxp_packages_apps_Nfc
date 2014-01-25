@@ -28,6 +28,7 @@
 #include "JavaClassConstants.h"
 
 
+//#define CHECK_UICC_VENDOR_NAME
 /*****************************************************************************
 **
 ** public variables
@@ -719,6 +720,9 @@ bool SecureElement::connectEE ()
     {
         UINT8 host = 0x02;
         UINT8 gate = 0xF0;
+        UINT8 staticPipeId = mNewPipeId;
+        UINT8 pipeIdForIdentity;
+
         nfaStat = NFA_HciAddStaticPipe(mNfaHciHandle, host, gate, mNewPipeId);
         if (nfaStat != NFA_STATUS_OK)
         {
@@ -726,6 +730,80 @@ bool SecureElement::connectEE ()
             retVal = false;
             goto TheEnd;
         }
+
+#ifdef CHECK_UICC_VENDOR_NAME
+        {
+            ALOGD ("%s: allocate gate", fn);
+            //allocate a source gate and store in mNewSourceGate
+            SyncEventGuard guard (mAllocateGateEvent);
+            if ((nfaStat = NFA_HciAllocGate (mNfaHciHandle)) != NFA_STATUS_OK)
+            {
+                ALOGE ("%s: fail allocate source gate; error=0x%X", fn, nfaStat);
+                goto TheEnd;
+            }
+            mAllocateGateEvent.wait ();
+            if (mCommandStatus != NFA_STATUS_OK)
+               goto TheEnd;
+        }
+
+        {
+            //if ((eeHandle & 0x00FF) == 0x02)
+            //    host = 0xC0;
+
+            ALOGD ("%s: create pipe host=0x%x", fn, host);
+            SyncEventGuard guard (mCreatePipeEvent);
+            nfaStat = NFA_HciCreatePipe (mNfaHciHandle, mNewSourceGate, host, 0x05); // Identity Management Gate
+            if (nfaStat != NFA_STATUS_OK)
+            {
+                ALOGE ("%s: fail create pipe; error=0x%X", fn, nfaStat);
+                goto TheEnd;
+            }
+            mCreatePipeEvent.wait ();
+            if (mCommandStatus != NFA_STATUS_OK)
+               goto TheEnd;
+        }
+
+        pipeIdForIdentity = mNewPipeId;
+        // restore pipe id for APDU
+        mNewPipeId = staticPipeId;
+
+        {
+            ALOGD ("%s: open pipe", fn);
+            SyncEventGuard guard (mPipeOpenedEvent);
+            nfaStat = NFA_HciOpenPipe (mNfaHciHandle, pipeIdForIdentity);
+            if (nfaStat != NFA_STATUS_OK)
+            {
+                ALOGE ("%s: fail open pipe; error=0x%X", fn, nfaStat);
+                goto TheEnd;
+            }
+            mPipeOpenedEvent.wait ();
+            if (mCommandStatus != NFA_STATUS_OK)
+               goto TheEnd;
+        }
+
+        {
+            ALOGD ("%s: get vendor name", fn);
+            SyncEventGuard guard (mRegistryEvent);
+            nfaStat = NFA_HciGetRegistry (mNfaHciHandle, pipeIdForIdentity, 0x04); // VENDOR_NAME
+            if (nfaStat != NFA_STATUS_OK)
+            {
+                ALOGE ("%s: fail to get vendor name; error=0x%X", fn, nfaStat);
+                goto TheEnd;
+            }
+
+            mReadingVendorName = true;
+            mRegistryEvent.wait ();
+            mReadingVendorName = false;
+
+            ALOGD ("%s: vendor name:%s", fn, mVendorName);
+            if (!strcmp (mVendorName, "O.T."))
+            {
+                mUseOberthurWarmReset = true;
+                mOberthurWarmResetCommand = 0x03;
+            }
+        }
+
+#endif
     }
     else
     {
@@ -853,6 +931,9 @@ bool SecureElement::disconnectEE (jint seID)
         }
     }
 
+    // Re-enable UICC low-power mode
+    android::setUiccIdleTimeout (true);
+
     if (mNewSourceGate)
     {
         SyncEventGuard guard (mDeallocateGateEvent);
@@ -864,8 +945,27 @@ bool SecureElement::disconnectEE (jint seID)
 
     mIsPiping = false;
 
-    // Re-enable UICC low-power mode
-    android::setUiccIdleTimeout (true);
+#ifndef CHECK_UICC_VENDOR_NAME
+    if (mNewPipeId == STATIC_PIPE_0x72) // if this is static pipe for APDU exchange
+    {
+        SyncEventGuard guard (mHciSentEvent);
+
+        nfaStat = NFA_HciSendEvent (mNfaHciHandle,
+                                    mNewPipeId,
+                                    NFA_HCI_EVT_HCI_END_OF_OPERATION,
+                                    0,    //xmitBufferSize,
+                                    NULL, //xmitBuffer,
+                                    0,    //sizeof(mResponseData),
+                                    NULL, //mResponseData,
+                                    0);
+
+        if (nfaStat == NFA_STATUS_OK)
+            mHciSentEvent.wait ();
+
+        mHciSentEvent.wait (400); // let SWP deactivated
+    }
+#endif
+
     // Re-enable RF discovery
     // Note that it only effactuates the current configuration,
     // so if polling/listening were configured OFF (forex because
@@ -1316,7 +1416,12 @@ void SecureElement::nfaHciCallback (tNFA_HCI_EVT event, tNFA_HCI_EVT_DATA* event
         break;
 
     case NFA_HCI_EVENT_SENT_EVT:
-        ALOGD ("%s: NFA_HCI_EVENT_SENT_EVT; status=0x%X", fn, eventData->evt_sent.status);
+        {
+            ALOGD ("%s: NFA_HCI_EVENT_SENT_EVT; status=0x%X", fn, eventData->evt_sent.status);
+
+            SyncEventGuard guard (sSecElem.mHciSentEvent);
+            sSecElem.mHciSentEvent.notifyOne ();
+        }
         break;
 
     case NFA_HCI_RSP_RCVD_EVT: //response received from secure element
@@ -1338,6 +1443,17 @@ void SecureElement::nfaHciCallback (tNFA_HCI_EVT event, tNFA_HCI_EVT_DATA* event
             sSecElem.mVerInfo[1] = eventData->registry.reg_data[17];
             sSecElem.mVerInfo[2] = eventData->registry.reg_data[18];
             sSecElem.mVerInfoEvent.notifyOne ();
+        }
+        else
+        {
+            if (sSecElem.mReadingVendorName)
+            {
+                memcpy(sSecElem.mVendorName, eventData->registry.reg_data, eventData->registry.data_len);
+                sSecElem.mVendorName[eventData->registry.data_len] = 0x00;
+            }
+
+            SyncEventGuard guard (sSecElem.mRegistryEvent);
+            sSecElem.mRegistryEvent.notifyOne ();
         }
         break;
 
