@@ -371,7 +371,7 @@ private:
     static const unsigned int MAX_RESPONSE_SIZE = 1024;
     enum RouteSelection {NoRoute, DefaultRoute, SecElemRoute};
     static const int MAX_NUM_EE = 5;    //max number of EE's
-    static const UINT8 STATIC_PIPE_0x72 = 0x72; //proprietary static pipe
+    static const UINT8 STATIC_PIPE_0x72 = 0x72; //static pipe
     static const UINT8 EVT_SEND_DATA = 0x10;    //see specification ETSI TS 102 622 v9.0.0 (Host Controller Interface); section 9.3.3.3
     static const tNFA_HANDLE EE_HANDLE_SWP1 = 0x401; //handle to secure element in SWP1
     static const tNFA_HANDLE EE_HANDLE_SWP2 = 0x402; //handle to secure element in SWP2
