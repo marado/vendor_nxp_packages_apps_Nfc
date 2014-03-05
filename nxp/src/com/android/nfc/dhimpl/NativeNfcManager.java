@@ -458,4 +458,6 @@ public class NativeNfcManager implements DeviceHost {
         mListener.onSeMifareAccess(block);
     }
 
+    public void nfcShutdownReason(int reason){}
+
 }

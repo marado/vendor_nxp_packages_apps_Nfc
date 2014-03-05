@@ -259,4 +259,5 @@ public interface DeviceHost {
     boolean enableReaderMode(int technologies);
 
     boolean disableReaderMode();
+    public void nfcShutdownReason(int reason);
 }
