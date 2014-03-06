@@ -100,6 +100,11 @@ public class NativeNfcManager implements DeviceHost {
         return doInitialize();
     }
 
+    private native void doReportReason(int reason);
+    @Override
+    public void nfcShutdownReason(int reason) {
+          doReportReason(reason);
+    }
     private native boolean doDeinitialize();
 
     @Override
