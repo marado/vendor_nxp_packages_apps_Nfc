@@ -1136,6 +1136,11 @@ void setUiccIdleTimeout (bool enable)
     // not an issue.
     tNFA_STATUS stat = NFA_STATUS_OK;
     UINT8 swp_cfg_byte0 = 0x00;
+
+#ifndef CONFIG_UICC_IDLE_TIMEOUT_SUPPORTED
+    return;
+#endif
+
     {
         SyncEventGuard guard (sNfaGetConfigEvent);
         tNFA_PMID configParam[1] = {0xC2};
@@ -1521,10 +1526,10 @@ TheEnd:
 **                  e: JVM environment.
 **                  o: Java object.
 **
-** Returns:         None
+** Returns:         JNI_TRUE if successful, JNI_FALSE, otherwise
 **
 *******************************************************************************/
-static void nfcManager_doSelectSecureElement(JNIEnv*, jobject)
+static jboolean nfcManager_doSelectSecureElement(JNIEnv*, jobject)
 {
     ALOGD ("%s: enter", __FUNCTION__);
     bool stat = true;
@@ -1544,12 +1549,21 @@ static void nfcManager_doSelectSecureElement(JNIEnv*, jobject)
 
 
     stat = SecureElement::getInstance().activate (0xABCDEF);
-    sIsSecElemSelected = true;
+    if (stat) {
+        sIsSecElemSelected = true;
+    } else {
+        ALOGD ("%s: failed to activate", __FUNCTION__);
+    }
 
     startRfDiscovery (true);
     PowerSwitch::getInstance ().setModeOn (PowerSwitch::SE_ROUTING);
 TheEnd:
     ALOGD ("%s: exit", __FUNCTION__);
+
+    if (stat)
+        return JNI_TRUE;
+    else
+        return JNI_FALSE;
 }
 
 
@@ -1953,7 +1967,7 @@ static JNINativeMethod gMethods[] =
     {"doGetSecureElementList", "()[I",
             (void *)nfcManager_doGetSecureElementList},
 
-    {"doSelectSecureElement", "()V",
+    {"doSelectSecureElement", "()Z",
             (void *)nfcManager_doSelectSecureElement},
 
     {"doDeselectSecureElement", "()V",
