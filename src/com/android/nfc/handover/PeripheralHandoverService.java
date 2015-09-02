@@ -70,7 +70,9 @@ public class PeripheralHandoverService extends Service implements BluetoothPerip
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case MSG_PAUSE_POLLING:
-                    mNfcAdapter.pausePolling(PAUSE_POLLING_TIMEOUT_MS);
+                    if (mNfcAdapter != null) {
+                        mNfcAdapter.pausePolling(PAUSE_POLLING_TIMEOUT_MS);
+                    }
                     break;
             }
         }
@@ -163,7 +165,9 @@ public class PeripheralHandoverService extends Service implements BluetoothPerip
         if (mBluetoothAdapter.isEnabled()) {
             if (!mBluetoothPeripheralHandover.start()) {
                 mHandler.removeMessages(MSG_PAUSE_POLLING);
-                mNfcAdapter.resumePolling();
+                if (mNfcAdapter != null) {
+                    mNfcAdapter.resumePolling();
+                }
             }
         } else {
             // Once BT is enabled, the headset pairing will be started
@@ -184,7 +188,7 @@ public class PeripheralHandoverService extends Service implements BluetoothPerip
             // If there is a pending device pairing, start it
             if (mBluetoothPeripheralHandover != null &&
                     !mBluetoothPeripheralHandover.hasStarted()) {
-                if (!mBluetoothPeripheralHandover.start()) {
+                if (!mBluetoothPeripheralHandover.start() && mNfcAdapter != null) {
                     mNfcAdapter.resumePolling();
                 }
             }
@@ -213,7 +217,9 @@ public class PeripheralHandoverService extends Service implements BluetoothPerip
 
             // do this unconditionally as the polling could have been paused as we were removing
             // the message in the handler. It's a no-op if polling is already enabled.
-            mNfcAdapter.resumePolling();
+            if (mNfcAdapter != null) {
+                mNfcAdapter.resumePolling();
+            }
         }
         disableBluetoothIfNeeded();
         stopSelf(mStartId);
