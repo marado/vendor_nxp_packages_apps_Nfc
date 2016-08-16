@@ -91,6 +91,10 @@ public class AidRoutingManager {
     private int mAidRoutingTableSize;
     // Maximum AID routing table size
     final Object mLock = new Object();
+    //set the status of last AID routes commit to routing table
+    //if true, last commit was successful,
+    //if false, there was an overflow of routing table for commit using last set of AID's in (mRouteForAid)
+    boolean mLastCommitStatus;
 
     // mAidRoutingTable contains the current routing table. The index is the route ID.
     // The route can include routes to a eSE/UICC.
@@ -121,6 +125,7 @@ public class AidRoutingManager {
         mAidMatchingPlatform = doGetAidMatchingPlatform();
         if (DBG) Log.d(TAG, "mAidTableSize=0x" + Integer.toHexString(mAidRoutingTableSize));
         mVzwRoutingCache = new VzwRoutingCache();
+        mLastCommitStatus = true;
     }
 
     public boolean supportsAidPrefixRouting() {
@@ -167,6 +172,10 @@ public class AidRoutingManager {
         synchronized (mLock) {
             if (routeForAid.equals(mRouteForAid)) {
                 if (DBG) Log.d(TAG, "Routing table unchanged, not updating");
+                NfcService.getInstance().updateStatusOfServices(false);
+                if(mLastCommitStatus == false){
+                    NfcService.getInstance().notifyRoutingTableFull();
+                }
                 return false;
             }
 
@@ -281,9 +290,15 @@ public class AidRoutingManager {
                 NfcService.getInstance().notifyRoutingTableFull();
             }
         }
-        // And finally commit the routing
+        // And finally commit the routing and update the status of commit for each service
         if(aidRouteResolved == true) {
             commit(routeCache);
+            NfcService.getInstance().updateStatusOfServices(true);
+            mLastCommitStatus = true;
+        }
+        else{
+            NfcService.getInstance().updateStatusOfServices(false);
+            mLastCommitStatus = false;
         }
 //        NfcService.getInstance().commitRouting();
 
