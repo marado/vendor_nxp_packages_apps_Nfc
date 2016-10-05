@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2015 NXP Semiconductors
@@ -35,6 +35,10 @@ import java.util.Map;
 import com.android.nfc.DeviceHost;
 import com.android.nfc.LlcpException;
 import com.android.nfc.NfcDiscoveryParameters;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.HashMap;
+
 
 /**
  * Native interface to the NFC Manager functions
@@ -69,6 +73,8 @@ public class NativeNfcManager implements DeviceHost {
     private final DeviceHostListener mListener;
     private final Context mContext;
     private Map<String, Integer> mNfcid2ToHandle;
+    private final Object mLock = new Object();
+    private final HashMap<Integer, byte[]> mT3tIdentifiers = new HashMap<Integer, byte[]>();
     public NativeNfcManager(Context context, DeviceHostListener listener) {
         mListener = listener;
         initializeNativeStructure();
@@ -183,6 +189,9 @@ public class NativeNfcManager implements DeviceHost {
         Log.d(TAG,"disableDtaMode : entry");
         doDisableDtaMode();
     }
+
+    @Override
+    public native byte[] getAdditionalConfigOptions();
 
     private native boolean doDeinitialize();
 
@@ -623,6 +632,53 @@ public class NativeNfcManager implements DeviceHost {
     @Override
     public native int doGetSecureElementTechList();
 
+    public native int doRegisterT3tIdentifier(byte[] t3tIdentifier);
+
+    @Override
+    public void registerT3tIdentifier(byte[] t3tIdentifier) {
+         Log.d(TAG, " registerT3tIdentifier entry");
+        synchronized (mLock) {
+            int handle = doRegisterT3tIdentifier(t3tIdentifier);
+            if (handle != 0xffff) {
+                mT3tIdentifiers.put(Integer.valueOf(handle), t3tIdentifier);
+            }
+        }
+        Log.d(TAG, "registerT3tIdentifier exit");
+    }
+
+    public native void doDeregisterT3tIdentifier(int handle);
+
+    @Override
+    public void deregisterT3tIdentifier(byte[] t3tIdentifier) {
+        Log.d(TAG, "deregisterT3tIdentifier entry");
+        synchronized (mLock) {
+            Iterator<Integer> it = mT3tIdentifiers.keySet().iterator();
+            while (it.hasNext()) {
+                int handle = it.next().intValue();
+                byte[] value = mT3tIdentifiers.get(handle);
+                if (Arrays.equals(value, t3tIdentifier)) {
+                    doDeregisterT3tIdentifier(handle);
+                    mT3tIdentifiers.remove(handle);
+                    break;
+                }
+            }
+        }
+        Log.d(TAG, "deregisterT3tIdentifier exit");
+    }
+
+    @Override
+    public void clearT3tIdentifiersCache() {
+        Log.d(TAG, "clearT3tIdentifiersCache entry");
+        synchronized (mLock) {
+            mT3tIdentifiers.clear();
+        }
+        Log.d(TAG, "clearT3tIdentifiersCache exit");
+    }
+
+    @Override
+    public native int getLfT3tMax();
+
+
     @Override
     public native int[] doGetActiveSecureElementList();
 
@@ -668,6 +724,11 @@ public class NativeNfcManager implements DeviceHost {
     @Override
     public native int doGetSeInterface(int type);
 
+    @Override
+    public native int doselectUicc(int uiccSlot);
+
+    @Override
+    public native int doGetSelectedUicc();
     /**
      * Notifies Ndef Message (TODO: rename into notifyTargetDiscovered)
      */
@@ -779,16 +840,16 @@ public class NativeNfcManager implements DeviceHost {
         mListener.onSeMifareAccess(block);
     }
 
-    private void notifyHostEmuActivated() {
-        mListener.onHostCardEmulationActivated();
+    private void notifyHostEmuActivated(int technology) {
+        mListener.onHostCardEmulationActivated(technology);
     }
 
-    private void notifyHostEmuData(byte[] data) {
-        mListener.onHostCardEmulationData(data);
+    private void notifyHostEmuData(int technology, byte[] data) {
+        mListener.onHostCardEmulationData(technology, data);
     }
 
-    private void notifyHostEmuDeactivated() {
-        mListener.onHostCardEmulationDeactivated();
+    private void notifyHostEmuDeactivated(int technology) {
+        mListener.onHostCardEmulationDeactivated(technology);
     }
 
     private void notifyAidRoutingTableFull() {
@@ -802,6 +863,10 @@ public class NativeNfcManager implements DeviceHost {
     private void notifyRfFieldDeactivated() {
         mListener.onRemoteFieldDeactivated();
     }
+
+   private void notifyUiccStatusEvent(int uiccStat) {
+       mListener.onUiccStatusEvent(uiccStat);
+   }
 
     static String toHexString(byte[] buffer, int offset, int length) {
         final char[] HEX_CHARS = "0123456789abcdef".toCharArray();

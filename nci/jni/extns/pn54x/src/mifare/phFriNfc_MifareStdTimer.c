@@ -1,5 +1,9 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
  * Copyright (C) 2010-2014 NXP Semiconductors
+ * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -105,7 +109,7 @@ NFCSTATUS  phFriNfc_MifareStd_StopTimer( phFriNfc_MifareStdTimer_t *TimerInfo )
 ** Returns:         NFCSTATUS_SUCCESS  -  timer created successfully
 **                  NFCSTATUS_FAILED   -  otherwise
 *******************************************************************************/
-STATIC NFCSTATUS  phFriNfc_MifareStd_CreateTimer( phFriNfc_MifareStdTimer_t *TimerInfo )
+NFCSTATUS  phFriNfc_MifareStd_CreateTimer( phFriNfc_MifareStdTimer_t *TimerInfo )
 {
     NFCSTATUS status = NFCSTATUS_SUCCESS;
     struct sigevent se;

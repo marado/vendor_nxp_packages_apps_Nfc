@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
+ *
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +19,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 #include "OverrideLog.h"
 #include "SecureElement.h"
 #include "JavaClassConstants.h"
@@ -54,6 +41,7 @@ extern int gGeneralTransceiveTimeout;
 static SyncEvent            sNfaVSCResponseEvent;
 //static bool sRfEnabled;           /*commented to eliminate warning defined but not used*/
 
+#if 0
 static void nfaVSCCallback(UINT8 event, UINT16 param_len, UINT8 *p_param);
 
 inline static void nfaVSCCallback(UINT8 event, UINT16 param_len, UINT8 *p_param)    /*defined as inline to eliminate warning defined but not used*/
@@ -64,14 +52,15 @@ inline static void nfaVSCCallback(UINT8 event, UINT16 param_len, UINT8 *p_param)
     SyncEventGuard guard (sNfaVSCResponseEvent);
     sNfaVSCResponseEvent.notifyOne ();
 }
+#endif
 
 // These must match the EE_ERROR_ types in NfcService.java
 static const int EE_ERROR_IO = -1;
-static const int EE_ERROR_ALREADY_OPEN = -2;
+//static const int EE_ERROR_ALREADY_OPEN = -2;
 static const int EE_ERROR_INIT = -3;
 static const int EE_ERROR_LISTEN_MODE = -4;
-static const int EE_ERROR_EXT_FIELD = -5;
-static const int EE_ERROR_NFC_DISABLED = -6;
+//static const int EE_ERROR_EXT_FIELD = -5;
+//static const int EE_ERROR_NFC_DISABLED = -6;
 static bool is_wired_mode_open = false;
 /*******************************************************************************
 **
@@ -99,7 +88,7 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection (JNIEnv*, jobje
     {
         goto TheEnd;
     }
-#if (NFC_NXP_ESE ==  TRUE && NFC_NXP_CHIP_TYPE != PN547C2)
+#if (NFC_NXP_ESE ==  TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
     if((RoutingManager::getInstance().is_ee_recovery_ongoing()))
     {
         ALOGD ("ee recovery ongoing!!!");
@@ -135,7 +124,7 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection (JNIEnv*, jobje
     }
     ALOGD("P61 Status is: %x", p61_current_state);
 #if(NFC_NXP_ESE_VER == JCOP_VER_3_1)
-    if (!(p61_current_state & P61_STATE_SPI))
+    if (!(p61_current_state & P61_STATE_SPI) && !(p61_current_state & P61_STATE_SPI_PRIO))
     {
 #endif
     if(p61_current_state & (P61_STATE_SPI)||(p61_current_state & (P61_STATE_SPI_PRIO)))
@@ -201,8 +190,12 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection (JNIEnv*, jobje
         startRfDiscovery (true);
     }
 #endif
-
-        stat = se.activate(SecureElement::ESE_ID);
+#if(NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE)
+    if(!(p61_current_state & (P61_STATE_SPI | P61_STATE_SPI_PRIO)))
+        stat = se.SecEle_Modeset(0x01); //Workaround
+    usleep(150000); /*provide enough delay if NFCC enter in recovery*/
+#endif
+        stat = se.activate(SecureElement::ESE_ID); // It is to get the current activated handle.
 
     if (stat)
     {
@@ -250,8 +243,10 @@ static jboolean nativeNfcSecureElement_doDisconnectSecureElementConnection (JNIE
 #if((NFC_NXP_ESE == TRUE)&&(NXP_EXTNS == TRUE))
     long ret_val = -1;
     NFCSTATUS status = NFCSTATUS_FAILED;
-#endif
 
+    SecureElement &se = SecureElement::getInstance();
+    se.NfccStandByOperation(STANDBY_TIMER_STOP);
+#endif
     //Send the EVT_END_OF_APDU_TRANSFER event at the end of wired mode session.
     stat = SecureElement::getInstance().sendEvent(SecureElement::EVT_END_OF_APDU_TRANSFER);
 

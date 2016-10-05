@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
+ *
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +19,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 #include <semaphore.h>
 #include <errno.h>
 #include "OverrideLog.h"
@@ -63,6 +50,9 @@ typedef struct nxp_feature_data
 }Nxp_Feature_Data_t;
 
 extern INT32 gActualSeCount;
+#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
+extern UINT8 sSelectedUicc;
+#endif
 namespace android
 {
 static Nxp_Feature_Data_t gnxpfeature_conf;
@@ -122,7 +112,7 @@ static void NxpResponse_SetDhlf_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param
 
 }
 
-static void NxpResponse_SetVenConfig_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_SetVenConfig_Cb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_SetVenConfig_Cb Received length data = 0x%x status = 0x%x", param_len, p_param[3]);
     if(p_param[3] == 0x00)
@@ -137,7 +127,7 @@ static void NxpResponse_SetVenConfig_Cb(UINT8 event, UINT16 param_len, UINT8 *p_
     gnxpfeature_conf.NxpFeatureConfigEvt.notifyOne ();
 }
 
-static void NxpResponse_SetSWPBitRate_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_SetSWPBitRate_Cb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_SetSWPBitRate_CbReceived length data = 0x%x status = 0x%x", param_len, p_param[3]);
     if(p_param[3] == 0x00)
@@ -153,7 +143,33 @@ static void NxpResponse_SetSWPBitRate_Cb(UINT8 event, UINT16 param_len, UINT8 *p
 }
 
 #if(NXP_EXTNS == TRUE)
-#if (NFC_NXP_CHIP_TYPE == PN548C2)
+#if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
+/*******************************************************************************
+ **
+ ** Function:        NxpResponse_SwitchUICC_Cb
+ **
+ ** Description:     Callback for siwtch UICC is handled
+ **                  Notifies NxpFeatureConfigEvt
+ **
+ ** Returns:         None
+ **
+ *******************************************************************************/
+static void NxpResponse_SwitchUICC_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+{
+    ALOGD("NxpResponse_SwitchUICC_Cb length data = 0x%x status = 0x%x", param_len, p_param[3]);
+    if(p_param[3] == 0x00)
+    {
+        SetCbStatus(NFA_STATUS_OK);
+    }
+    else
+    {
+        SetCbStatus(NFA_STATUS_FAILED);
+    }
+    SyncEventGuard guard(gnxpfeature_conf.NxpFeatureConfigEvt);
+    gnxpfeature_conf.NxpFeatureConfigEvt.notifyOne ();
+}
+#endif
+#if((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551))
 /*******************************************************************************
  **
  ** Function:        NxpResponse_EnableAGCDebug_Cb()
@@ -163,7 +179,7 @@ static void NxpResponse_SetSWPBitRate_Cb(UINT8 event, UINT16 param_len, UINT8 *p
  ** Returns:         success/failure
  **
  *******************************************************************************/
-static void NxpResponse_EnableAGCDebug_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_EnableAGCDebug_Cb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_EnableAGCDebug_Cb Received length data = 0x%x", param_len);
     SetCbStatus(NFA_STATUS_FAILED);
@@ -210,7 +226,6 @@ tNFA_STATUS SendAGCDebugCommand()
 {
     tNFA_STATUS status = NFA_STATUS_FAILED;
     uint8_t cmd_buf[] = {0x2F, 0x33, 0x04, 0x40, 0x00, 0x40, 0xD8};
-    uint8_t dynamic_rssi_buf[50];
     ALOGD("%s: enter", __FUNCTION__);
     SetCbStatus(NFA_STATUS_FAILED);
     gnxpfeature_conf.rsp_len = 0;
@@ -223,7 +238,7 @@ tNFA_STATUS SendAGCDebugCommand()
         gnxpfeature_conf.NxpFeatureConfigEvt.wait(1000); /* wait for callback */
     }
     else
-    {    tNFA_STATUS status = NFA_STATUS_FAILED;
+    {
         ALOGE ("%s: Failed NFA_SendNxpNciCommand", __FUNCTION__);
     }
     status = GetCbStatus();
@@ -324,7 +339,6 @@ tNFA_STATUS SetScreenState(jint state)
     return status;
 }
 
-#if(NFC_NXP_CHIP_TYPE == PN547C2)
 /*******************************************************************************
  **
  ** Function:        SendAutonomousMode
@@ -379,7 +393,6 @@ tNFA_STATUS SendAutonomousMode(jint state ,uint8_t num)
     status = GetCbStatus();
     return status;
 }
-#endif
 //Factory Test Code --start
 /*******************************************************************************
  **
@@ -394,7 +407,7 @@ tNFA_STATUS Nxp_SelfTest(uint8_t testcase, uint8_t* param)
 {
     tNFA_STATUS status = NFA_STATUS_FAILED;
     uint8_t swp_test[] ={0x2F, 0x3E, 0x01, 0x00};   //SWP SelfTest
-#if(NFC_NXP_CHIP_TYPE != PN547C2)
+#if((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551))
     uint8_t prbs_test[] ={0x2F, 0x30, 0x06, 0x00, 0x00, 0x00, 0x00, 0x01, 0xFF};    //PRBS SelfTest
     uint8_t cmd_buf[9] = {0,};
 #else
@@ -520,7 +533,7 @@ tNFA_STATUS SetVenConfigValue(jint nfcMode)
     return status;
 }
 
-static void NxpResponse_GetSwpStausValueCb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_GetSwpStausValueCb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_GetSwpStausValueCb length data = 0x%x status = 0x%x", param_len, p_param[3]);
     if(p_param[3] == 0x00)
@@ -528,6 +541,9 @@ static void NxpResponse_GetSwpStausValueCb(UINT8 event, UINT16 param_len, UINT8 
         if (p_param[8] != 0x00)
         {
             ALOGD("SWP1 Interface is enabled");
+#if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
+            sSelectedUicc = (p_param[8] & 0x0F);
+#endif
             gActualSeCount++;
         }
         if (p_param[12] != 0x00)
@@ -574,7 +590,7 @@ tNFA_STATUS GetSwpStausValue(void)
         ALOGE ("%s: Failed NFA_SendNxpNciCommand", __FUNCTION__);
     }
     status = GetCbStatus();
-    ALOGD("%s : gActualSeCount = %d",__FUNCTION__, gActualSeCount);
+    ALOGD("%s : gActualSeCount = %ld",__FUNCTION__, gActualSeCount);
     return status;
 }
 
@@ -702,6 +718,89 @@ tNFA_STATUS SetUICC_SWPBitRate(bool isMifareSupported)
     SetCbStatus(NFA_STATUS_FAILED);
     SyncEventGuard guard (gnxpfeature_conf.NxpFeatureConfigEvt);
     status = NFA_SendNxpNciCommand(sizeof(cmd_buf), cmd_buf, NxpResponse_SetSWPBitRate_Cb);
+    if (status == NFA_STATUS_OK)
+    {
+        ALOGD ("%s: Success NFA_SendNxpNciCommand", __FUNCTION__);
+        gnxpfeature_conf.NxpFeatureConfigEvt.wait(); /* wait for callback */
+    }
+    else
+    {
+         ALOGE ("%s: Failed NFA_SendNxpNciCommand", __FUNCTION__);
+    }
+    status = GetCbStatus();
+    return status;
+}
+
+void start_timer_msec(struct timeval  *start_tv)
+{
+    gettimeofday(start_tv, NULL);
+}
+
+long stop_timer_getdifference_msec(struct timeval  *start_tv, struct timeval  *stop_tv)
+{
+    gettimeofday(stop_tv, NULL);
+    return ((long) (stop_tv->tv_sec - start_tv->tv_sec)*1000L +
+            (long) (stop_tv->tv_usec - start_tv->tv_usec)/1000L);
+}
+
+#endif
+#if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
+/*******************************************************************************
+ **
+ ** Function:        Set_EERegisterValue()
+ **
+ ** Description:     Prepare NCI_SET_CONFIG command with configuration parameter
+ **                  value, masking bits and bit value
+ **
+ ** Returns:         success/failure
+ **
+ *******************************************************************************/
+tNFA_STATUS Set_EERegisterValue(UINT16 RegAddr, uint8_t bitVal)
+{
+    tNFA_STATUS status = NFC_STATUS_FAILED;
+    uint8_t swp1conf[] = {0x20,0x02,0x05,0x01,0x00,0x00,0x01,0x00};
+    ALOGD ("Enter: Prepare SWP1 configurations");
+    swp1conf[4] = (uint8_t)((RegAddr & 0xFF00)>>8);
+    swp1conf[5] = (uint8_t)(RegAddr & 0x00FF);
+    swp1conf[7] = (uint8_t)(0xFF & bitVal);
+    //swp1conf[7] = 0x01;
+    ALOGD ("Exit: Prepare SWP1 configurations");
+
+    SetCbStatus(NFA_STATUS_FAILED);
+    SyncEventGuard guard (gnxpfeature_conf.NxpFeatureConfigEvt);
+
+    status = NFA_SendNxpNciCommand(sizeof(swp1conf), swp1conf, NxpResponse_SwitchUICC_Cb);
+    if (status == NFA_STATUS_OK)
+    {
+        ALOGD ("%s: Success NFA_SendNxpNciCommand", __FUNCTION__);
+        gnxpfeature_conf.NxpFeatureConfigEvt.wait(); /* wait for callback */
+        status = NFA_STATUS_FAILED;
+    }
+    else
+    {
+         ALOGE ("%s: Failed NFA_SendNxpNciCommand", __FUNCTION__);
+    }
+    status = GetCbStatus();
+    return status;
+}
+
+#endif
+#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
+/*******************************************************************************
++ **
++ ** Function:        NxpNfc_Write_Cmd()
++ **
++ ** Description:     Writes the command to NFCC
++ **
++ ** Returns:         success/failure
++ **
++ *******************************************************************************/
+tNFA_STATUS NxpNfc_Write_Cmd_Common(uint8_t retlen, uint8_t* buffer)
+{
+    tNFA_STATUS status = NFA_STATUS_FAILED;
+    SetCbStatus(NFA_STATUS_FAILED);
+    SyncEventGuard guard (gnxpfeature_conf.NxpFeatureConfigEvt);
+    status = NFA_SendNxpNciCommand(retlen, buffer, NxpResponse_Cb);
     if (status == NFA_STATUS_OK)
     {
         ALOGD ("%s: Success NFA_SendNxpNciCommand", __FUNCTION__);
