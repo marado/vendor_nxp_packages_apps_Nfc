@@ -50,7 +50,7 @@ import android.nfc.IAppCallback;
 import android.nfc.INfcAdapter;
 import android.nfc.INfcAdapterExtras;
 import android.nfc.INfcCardEmulation;
-import android.nfc.INfcFCardEmulation;
+//import android.nfc.INfcFCardEmulation;
 import android.nfc.INfcTag;
 import android.nfc.INfcUnlockHandler;
 import android.nfc.NdefMessage;
@@ -464,7 +464,7 @@ public class NfcService implements DeviceHostListener {
     boolean mIsAirplaneToggleable;
     boolean mIsDebugBuild;
     boolean mIsHceCapable;
-    boolean mIsHceFCapable;
+    //boolean mIsHceFCapable;
     boolean mPollingPaused;
     boolean mIsRoutingTableDirty;
     boolean mIsFelicaOnHostConfigured;
@@ -903,10 +903,11 @@ public class NfcService implements DeviceHostListener {
 
         PackageManager pm = mContext.getPackageManager();
         mIsHceCapable =
-                pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION) ||
+                pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION) /* ||
                 pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION_NFCF);
         mIsHceFCapable =
-                pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION_NFCF);
+                pm.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION_NFCF)
+                */;
 
         if (mIsHceCapable) {
             mAidRoutingManager = new AidRoutingManager();
@@ -1776,7 +1777,7 @@ public class NfcService implements DeviceHostListener {
                 return null;
             }
         }
-
+/*
         @Override
         public INfcFCardEmulation getNfcFCardEmulationInterface() {
             if (mIsHceFCapable && mCardEmulationManager != null) {
@@ -1785,6 +1786,7 @@ public class NfcService implements DeviceHostListener {
                 return null;
             }
          }
+*/
 
 
         @Override
