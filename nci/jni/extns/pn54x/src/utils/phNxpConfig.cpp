@@ -122,11 +122,13 @@ typedef enum
   TARGET_MSM8937                       = 294, /**< 8937 target */
   TARGET_MSM8953                       = 293, /**< 8953 target */
   TARGET_MSM8996                       = 246, /**< 8996 target*/
-  TARGET_MSM8909                       = 245, /**< 8909w target */
+  TARGET_MSM8909                       = 245, /**< 8909 target */
   TARGET_MSM8998                       = 292, /**< 8998 target */
   TARGET_MSM8997                       = 306, /**< 8997 target */
-  TARGET_MSM8917                       = 303, /**< 8997 target */
-  TARGET_MSM8940                       = 313, /**< 8997 target */
+  TARGET_MSM8917                       = 303, /**< 8917 target */
+  TARGET_MSM8940                       = 313, /**< 8940 target */
+  TARGET_MSM8909W                      = 300, /**< 8909w target */
+  TARGET_APQ8009W                      = 301, /**< 8909w target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -280,9 +282,11 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
     int config_id = QRD_TYPE_DEFAULT;
     char target_type[MAX_SOC_INFO_NAME_LEN] = {'\0'};
     char soc_info[MAX_SOC_INFO_NAME_LEN] = {'\0'};
+    char platform_subtype[MAX_SOC_INFO_NAME_LEN] = {'\0'};
     string strPath;
     int rc = 0;
     int idx = 0;
+    int subtype_id = 0;
 
     rc = get_soc_info(soc_info, SYSFS_SOCID_PATH1, SYSFS_SOCID_PATH2);
     if (rc < 0) {
@@ -356,6 +360,27 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
         case TARGET_MSM8997:
             config_id = MTP_TYPE_1;
             strlcpy(config_file, config_name_mtp1, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        case TARGET_MSM8909W:
+        case TARGET_APQ8009W:
+            rc = get_soc_info(platform_subtype, SYSFS_PLATFORM_SUBTYPE_PATH1, SYSFS_PLATFORM_SUBTYPE_PATH2);
+            if (rc > 0) {
+                subtype_id = atoi(platform_subtype);
+                // check if its SWOC or WTP
+                if(9 == subtype_id) {
+                    // SWOC device doesn't have DC DC
+                    config_id = QRD_TYPE_DEFAULT;
+                    strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
+                } else {
+                    // WTP has DC DC on
+                    config_id = MTP_TYPE_DEFAULT;
+                    strlcpy(config_file, config_name_mtp, MAX_DATA_CONFIG_PATH_LEN);
+                }
+            } else {
+                ALOGE("get_soc_info(PLATFORM_SUBTYPE) fail!\n");
+                config_id = QRD_TYPE_DEFAULT;
+                strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
+            }
             break;
         default:
             config_id = MTP_TYPE_DEFAULT;

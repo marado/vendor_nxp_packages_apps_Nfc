@@ -138,6 +138,13 @@ int updateNxpConfigTimestamp ();
 #define SYSFS_SOCID_PATH2    "/sys/devices/system/soc/soc0/id"
 
 /**
+ *  @brief Defines the path where the platform subtype details are present.
+ */
+
+#define SYSFS_PLATFORM_SUBTYPE_PATH1  "/sys/devices/soc0/platform_subtype_id"
+#define SYSFS_PLATFORM_SUBTYPE_PATH2  "/sys/devices/system/soc/soc0/platform_subtype_id"
+
+/**
  *  @brief Defines the maximum length of the config file name.
  */
 
