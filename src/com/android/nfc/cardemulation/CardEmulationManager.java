@@ -472,4 +472,8 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         NfcPermissions.enforceUserPermissions(mContext);
         return mServiceCache.updateServiceState(userId ,Binder.getCallingUid() ,serviceState);
     }
+
+    public void updateStatusOfServices(boolean commitStatus) {
+        mServiceCache.updateStatusOfServices(commitStatus);
+    }
 }
