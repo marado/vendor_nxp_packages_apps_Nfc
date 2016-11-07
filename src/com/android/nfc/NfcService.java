@@ -2128,6 +2128,17 @@ public class NfcService implements DeviceHostListener {
             return mDeviceHost.doGetSeInterface(type);
         }
 
+        @Override
+        public int getMaxAidRoutingTableSize() throws RemoteException {
+            NfcPermissions.enforceUserPermissions(mContext);
+            return getAidRoutingTableSize();
+        }
+
+        @Override
+        public int getCommittedAidRoutingTableSize() throws RemoteException {
+            NfcPermissions.enforceUserPermissions(mContext);
+            return (getAidRoutingTableSize() - getRemainingAidTableSize());
+        }
 //       @Override
 //       public boolean setVzwAidList(RouteEntry[] entries) throws RemoteException {
 //           Log.i(TAG,"setVzwAidList - enter");
@@ -3608,8 +3619,15 @@ public class NfcService implements DeviceHostListener {
             }
             return mSecureElement.doGetAtr(mOpenEe.handle);
         }
+        @Override
+        public int selectUicc(int uiccSlot) throws RemoteException {
+            throw new RemoteException("Not yet implemented");
+        }
 
-
+        @Override
+        public int getSelectedUicc() throws RemoteException {
+            throw new RemoteException("Not yet implemented");
+        }
     }
 
     /** resources kept while secure element is open */
@@ -5197,5 +5215,11 @@ public class NfcService implements DeviceHostListener {
             pw.println(mDeviceHost.dump());
 
         }
+    }
+    /**
+     * Update the status of all the services which were populated to commit to routing table
+     */
+    public void updateStatusOfServices(boolean commitStatus) {
+        mCardEmulationManager.updateStatusOfServices(commitStatus);
     }
 }
