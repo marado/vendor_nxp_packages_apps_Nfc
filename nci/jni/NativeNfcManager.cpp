@@ -327,6 +327,10 @@ typedef struct
     UINT16   sUicc2CntxLen;
     UINT8    sUicc1TechCapblty[12];
     UINT8    sUicc2TechCapblty[12];
+    UINT8    sUicc1SessionId[8];
+    UINT8    sUicc2SessionId[8];
+    UINT8    sUicc1SessionIdLen;
+    UINT8    sUicc2SessionIdLen;
     UINT8    uiccActivStat = 0;
     UINT8    uiccConfigStat = 0;
 }dual_uicc_info_t;
@@ -390,6 +394,7 @@ static bool nfcManager_doPartialDeInitialize();
 static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot);
 static int nfcManager_doGetSelectedUicc(JNIEnv* e, jobject o);
 static void getUiccContext();
+static int getUiccSession();
 static int nfcManager_staticDualUicc_Precondition(int uiccSlot);
 #endif
 #endif
@@ -2011,11 +2016,11 @@ if ((signal(SIGABRT, sig_handler) == SIG_ERR) &&
                 GetNxpNumValue (NAME_NXP_DUAL_UICC_ENABLE, (void*)&uicc_active_state, sizeof(uicc_active_state));
                 if(uicc_active_state == 0x01)
                 {
+                    checkforNfceeConfig();
                     dualUiccInfo.uiccActivStat = 0x00;
                     if(SecureElement::getInstance().getEeStatus(UICC_HANDLE)!=NFC_NFCEE_STATUS_REMOVED)
                     {
                         dualUiccInfo.uiccActivStat = (sSelectedUicc & 0x0F);
-                        getUiccContext();
                     }
                     switchToUiccSlot = ((sSelectedUicc & 0x0F) == 0x01) ? 0x02 : 0x01;
                     nfcManager_doSelectUicc(e,o,switchToUiccSlot);
@@ -4248,8 +4253,11 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
 
     bitVal = ((0x10) | uiccSlot);
 
+    getUiccContext();
+
     if((dualUiccInfo.sUicc1CntxLen !=0)||(dualUiccInfo.sUicc2CntxLen !=0))
     {
+
         if((bitVal == 0x11)&&(dualUiccInfo.sUicc1CntxLen !=0))
         {
             ALOGD ("%s : update uicc1 context information ", __FUNCTION__);
@@ -5820,7 +5828,15 @@ static void nfcManager_setProvisionMode(JNIEnv* /* e */, jobject /* o */, jboole
  **********************************************************************************/
 void checkforNfceeBuffer()
 {
-int i, count = 0;
+    int i, count = 0;
+#if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
+    unsigned long uicc_active_state = 0;
+    if(!GetNxpNumValue (NAME_NXP_DUAL_UICC_ENABLE, (void*)&uicc_active_state, sizeof(uicc_active_state)))
+    {
+        ALOGE ("NXP_DUAL_UICC_ENABLE Not found taking default value 0x00");
+        uicc_active_state = 0x00;
+    }
+#endif
 
     for(i=4;i<12;i++)
     {
@@ -5829,9 +5845,40 @@ int i, count = 0;
     }
 
     if(count >= 8)
+    {
+#if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
+        /*If session ID received all 0xff for UICC and dual UICC feature is enabled then
+         * clear the corresponding buffer (invalid session ID)
+         * */
+        if((sConfig[1] == 0xA0) && (sConfig[2] == 0xEA) &&
+                (uicc_active_state == 0x01))
+        {
+            if(sSelectedUicc == 0x01)
+            {
+                memset(dualUiccInfo.sUicc1SessionId,0x00,sizeof(dualUiccInfo.sUicc1SessionId));
+                dualUiccInfo.sUicc1SessionIdLen = 0;
+            }
+            else
+            {
+                memset(dualUiccInfo.sUicc2SessionId,0x00,sizeof(dualUiccInfo.sUicc2SessionId));
+                dualUiccInfo.sUicc2SessionIdLen = 0;
+            }
+        }
+#endif
         sNfceeConfigured = 1;
+    }
     else
-        sNfceeConfigured = 0;
+    {
+#if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
+        if((sConfig[1] == 0xA0) && (sConfig[2] == 0xEA) &&
+                (uicc_active_state == 0x01))
+        {
+            sNfceeConfigured = getUiccSession();
+        }
+        else
+#endif
+            sNfceeConfigured = 0;
+    }
 
     memset (sConfig, 0, sizeof (sConfig));
 
@@ -5920,7 +5967,6 @@ void checkforNfceeConfig()
             retry_cnt=0;
 #if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
             sCheckNfceeFlag = 0;
-            getUiccContext();
 #endif
         }
 
@@ -5997,30 +6043,33 @@ static void getUiccContext()
         android::sNfaGetConfigEvent.wait();
     }
 
-    ALOGD ("%s: save UICC context Info : Len = %d", __FUNCTION__,sCurrentConfigLen);
+    ALOGD ("%s: UICC context Info : Len = %x", __FUNCTION__,sCurrentConfigLen);
     /*If the session ID is changed or uicc changed*/
+
     if((dualUiccInfo.sUicc1CntxLen != 0)&&(sSelectedUicc == 0x01))
     {
-        for(i= 5 ; i < 13; i++)
+        for(i= 0 ; i < dualUiccInfo.sUicc1CntxLen; i++)
         {
-            if(sConfig[i] != dualUiccInfo.sUicc1Cntx[1])
+            if(sConfig[i] != dualUiccInfo.sUicc1Cntx[i])
                 break;
         }
-        if(i != 13)
+        if(i != dualUiccInfo.sUicc1CntxLen)
         {
+            ALOGD ("%s: copying UICC1 info", __FUNCTION__);
             memcpy(dualUiccInfo.sUicc1Cntx, sConfig, sCurrentConfigLen);
         }
     }
     /*If the session ID is changed or uicc changed*/
     if((dualUiccInfo.sUicc2CntxLen != 0)&&(sSelectedUicc == 0x02))
     {
-        for(i= 5 ; i < 13; i++)
+        for(i= 0 ; i < dualUiccInfo.sUicc2CntxLen; i++)
         {
-            if(sConfig[i] != dualUiccInfo.sUicc2Cntx[1])
+            if(sConfig[i] != dualUiccInfo.sUicc2Cntx[i])
                 break;
         }
-        if(i != 13)
+        if(i != dualUiccInfo.sUicc1CntxLen)
         {
+            ALOGD ("%s: copying UICC2 info", __FUNCTION__);
             memcpy(dualUiccInfo.sUicc2Cntx, sConfig, sCurrentConfigLen);
         }
     }
@@ -6084,6 +6133,79 @@ static void getUiccContext()
 
 /**********************************************************************************
  **
+ ** Function:        getUiccSession
+ **
+ ** Description:     Read and store UICC session values
+ **
+ ** Returns:         UICC Configured status
+ **                  1 : failed
+ **                  0 : success
+ **
+ **********************************************************************************/
+static int getUiccSession()
+{
+    ALOGD ("%s: Enter", __FUNCTION__);
+
+    int cmpStat = 0, sUiccConfigured = 1;
+
+    /* sConfig will have session ID received
+     * If received different from previous UICC save it in corresponding UICC buffer
+     * If same, reset the UICC buffer
+     * */
+    if(sSelectedUicc == 0x01)
+    {
+        if(dualUiccInfo.sUicc2SessionIdLen != 0)
+        {
+            cmpStat = memcmp (sConfig + 4, dualUiccInfo.sUicc2SessionId, dualUiccInfo.sUicc2SessionIdLen);
+            if(cmpStat == 0)
+            {
+                memset(dualUiccInfo.sUicc1SessionId,0x00,sizeof(dualUiccInfo.sUicc1SessionId));
+                dualUiccInfo.sUicc1SessionIdLen = 0;
+                sUiccConfigured = 1;
+            }
+            else
+            {
+                memcpy(dualUiccInfo.sUicc1SessionId, sConfig+4, 8);
+                dualUiccInfo.sUicc1SessionIdLen = 8;
+                sUiccConfigured = 0;
+            }
+        }
+        else
+        {
+            memcpy(dualUiccInfo.sUicc1SessionId, sConfig+4, 8);
+            dualUiccInfo.sUicc1SessionIdLen = 8;
+            sUiccConfigured = 0;
+        }
+    }
+    else if(sSelectedUicc == 0x02)
+    {
+        if(dualUiccInfo.sUicc1SessionIdLen != 0)
+        {
+            cmpStat = memcmp (sConfig + 4, dualUiccInfo.sUicc1SessionId, dualUiccInfo.sUicc1SessionIdLen);
+            if(cmpStat == 0)
+            {
+                memset(dualUiccInfo.sUicc2SessionId,0x00,sizeof(dualUiccInfo.sUicc2SessionId));
+                dualUiccInfo.sUicc2SessionIdLen = 0;
+                sUiccConfigured = 1;
+            }
+            else
+            {
+                memcpy(dualUiccInfo.sUicc2SessionId, sConfig+4, 8);
+                dualUiccInfo.sUicc2SessionIdLen = 8;
+                sUiccConfigured = 0;
+            }
+        }
+        else
+        {
+            memcpy(dualUiccInfo.sUicc2SessionId, sConfig+4, 8);
+            dualUiccInfo.sUicc2SessionIdLen = 8;
+            sUiccConfigured = 0;
+        }
+    }
+    return sUiccConfigured;
+}
+/**********************************************************************************
+ **
  ** Function:        notifyUiccEvent
  **
  ** Description:     Notifies UICC event sto Service
@@ -6132,7 +6254,7 @@ static int nfcManager_staticDualUicc_Precondition(int uiccSlot)
     }
     else
     {
-        ALOGE ("NXP_DUAL_UICC_ENABLE Not found taking default value 0x01");
+        ALOGE ("NXP_DUAL_UICC_ENABLE Not found taking default value 0x00");
         uicc_active_state = 0x00;
     }
 
