@@ -46,6 +46,7 @@
 #include <sys/types.h>
 #endif
 #include "DwpChannel.h"
+#include <fcntl.h>
 extern "C"
 {
     #include "nfa_api.h"
@@ -394,12 +395,15 @@ static bool nfcManager_doPartialDeInitialize();
 #if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
 static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot);
 static int nfcManager_doGetSelectedUicc(JNIEnv* e, jobject o);
-static void getUiccContext();
+static void getUiccContext(int uiccSlot);
+static void update_uicc_context_info();
 static int getUiccSession();
 static int nfcManager_staticDualUicc_Precondition(int uiccSlot);
+static void read_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTechCap, UINT16 uiccTechCapLen, UINT8 block, uint8_t slotnum);
+static void write_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTechCap, UINT16 uiccTechCapLen, UINT8 block, uint8_t slotnum);
+static UINT16 calc_crc16(UINT8* pBuff, UINT16 wLen);
 #endif
 #endif
-
 
 static int nfcManager_doGetSeInterface(JNIEnv* e, jobject o, jint type);
 
@@ -4254,7 +4258,7 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
 
     bitVal = ((0x10) | uiccSlot);
 
-    getUiccContext();
+    getUiccContext(uiccSlot);
 
     if((dualUiccInfo.sUicc1CntxLen !=0)||(dualUiccInfo.sUicc2CntxLen !=0))
     {
@@ -4363,12 +4367,16 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
         if((sSelectedUicc == 0x01)&&(dualUiccInfo.sUicc1CntxLen != 0x00))
         {
             memset(dualUiccInfo.sUicc1Cntx,0x00,sizeof(dualUiccInfo.sUicc1Cntx));
+            memset(dualUiccInfo.sUicc1TechCapblty,0x00,10);
             dualUiccInfo.sUicc1CntxLen = 0x00;
+            write_uicc_context(dualUiccInfo.sUicc1Cntx,  dualUiccInfo.sUicc1CntxLen, dualUiccInfo.sUicc1TechCapblty, 10, 1, sSelectedUicc);
         }
         else if((sSelectedUicc == 0x02)&&(dualUiccInfo.sUicc2CntxLen != 0x00))
         {
             memset(dualUiccInfo.sUicc2Cntx,0x00,sizeof(dualUiccInfo.sUicc2Cntx));
+            memset(dualUiccInfo.sUicc2TechCapblty,0x00,10);
             dualUiccInfo.sUicc2CntxLen = 0x00;
+            write_uicc_context(dualUiccInfo.sUicc2Cntx,  dualUiccInfo.sUicc2CntxLen, dualUiccInfo.sUicc2TechCapblty, 10, 1, sSelectedUicc);
         }
     }
 
@@ -4429,6 +4437,7 @@ static int nfcManager_doGetSelectedUicc(JNIEnv* e, jobject o)
     return uicc_stat;
 }
 #endif
+
 /*****************************************************************************
 **
 ** JNI functions for android-4.0.1_r1
@@ -6043,12 +6052,12 @@ static void nfaNxpSelfTestNtfTimerCb (union sigval)
  ** Returns:         None
  **
  **********************************************************************************/
-static void getUiccContext()
+static void getUiccContext(int uiccSlot)
 {
     UINT8 i;
     tNFA_STATUS status;
     tNFA_PMID param_ids_UICC_getContext[]       = {0xA0, 0xF4};
-    tNFA_PMID param_ids_UICC_getOtherContext[]  = {0xA0, 0xF5};
+
     ALOGD ("%s: Enter", __FUNCTION__);
 
     SyncEventGuard guard (android::sNfaGetConfigEvent);
@@ -6071,7 +6080,7 @@ static void getUiccContext()
         if(i != dualUiccInfo.sUicc1CntxLen)
         {
             ALOGD ("%s: copying UICC1 info", __FUNCTION__);
-            memcpy(dualUiccInfo.sUicc1Cntx, sConfig, sCurrentConfigLen);
+            update_uicc_context_info();
         }
     }
     /*If the session ID is changed or uicc changed*/
@@ -6085,7 +6094,7 @@ static void getUiccContext()
         if(i != dualUiccInfo.sUicc1CntxLen)
         {
             ALOGD ("%s: copying UICC2 info", __FUNCTION__);
-            memcpy(dualUiccInfo.sUicc2Cntx, sConfig, sCurrentConfigLen);
+            update_uicc_context_info();
         }
     }
 
@@ -6105,13 +6114,8 @@ static void getUiccContext()
         }
         else
         {
-            memcpy(dualUiccInfo.sUicc1Cntx, sConfig, sCurrentConfigLen);
-            status = NFA_GetConfig(0x01,param_ids_UICC_getOtherContext);
-            if(status == NFA_STATUS_OK)
-            {
-                android::sNfaGetConfigEvent.wait();
-            }
-            memcpy(dualUiccInfo.sUicc1TechCapblty, sConfig, sCurrentConfigLen);
+            ALOGD ("%s: copying UICC1 info", __FUNCTION__);
+            update_uicc_context_info();
         }
     }
     /*For the first power cycle for uicc2*/
@@ -6130,20 +6134,306 @@ static void getUiccContext()
         }
         else
         {
-            memcpy(dualUiccInfo.sUicc2Cntx, sConfig, sCurrentConfigLen);
-            status = NFA_GetConfig(0x01,param_ids_UICC_getOtherContext);
-            if(status == NFA_STATUS_OK)
-            {
-                android::sNfaGetConfigEvent.wait();
-            }
-            memcpy(dualUiccInfo.sUicc2TechCapblty, sConfig, sCurrentConfigLen);
+            ALOGD ("%s: copying UICC2 info", __FUNCTION__);
+            update_uicc_context_info();
         }
     }
     else
     {
         ALOGD ("%s: UICC info are already stored..",__FUNCTION__);
     }
+
+    if((uiccSlot == 0x01)&&(dualUiccInfo.sUicc1CntxLen == 0x00))
+    {
+        read_uicc_context(dualUiccInfo.sUicc1Cntx, dualUiccInfo.sUicc1CntxLen,
+                dualUiccInfo.sUicc1TechCapblty, sizeof(dualUiccInfo.sUicc1TechCapblty), 1, uiccSlot);
+    }
+    else if((uiccSlot == 0x02)&&(dualUiccInfo.sUicc2CntxLen == 0x00))
+    {
+        read_uicc_context(dualUiccInfo.sUicc2Cntx, dualUiccInfo.sUicc2CntxLen,
+                dualUiccInfo.sUicc2TechCapblty, sizeof(dualUiccInfo.sUicc2TechCapblty), 1, uiccSlot);
+    }
+
     ALOGD ("%s: Exit", __FUNCTION__);
+}
+
+/**********************************************************************************
+ **
+ ** Function:        update_uicc_context_info
+ **
+ ** Description:     updates UICC context related info to buffere and file
+ **
+ ** Returns:         none
+ **
+ **********************************************************************************/
+static void update_uicc_context_info()
+{
+    ALOGD ("%s: Enter", __FUNCTION__);
+    tNFA_STATUS status = NFA_STATUS_FAILED;
+    tNFA_PMID param_ids_UICC_getOtherContext[]  = {0xA0, 0xF5};
+    if(sSelectedUicc == 0x01)
+    {
+        memcpy(dualUiccInfo.sUicc1Cntx, sConfig, sCurrentConfigLen);
+        status = NFA_GetConfig(0x01,param_ids_UICC_getOtherContext);
+        if(status == NFA_STATUS_OK)
+        {
+            android::sNfaGetConfigEvent.wait();
+        }
+        memcpy(dualUiccInfo.sUicc1TechCapblty, sConfig, sCurrentConfigLen);
+        write_uicc_context(dualUiccInfo.sUicc1Cntx,  dualUiccInfo.sUicc1CntxLen, dualUiccInfo.sUicc1TechCapblty, 10, 1, sSelectedUicc);
+    }
+    else if(sSelectedUicc == 0x02)
+    {
+        memcpy(dualUiccInfo.sUicc2Cntx, sConfig, sCurrentConfigLen);
+        status = NFA_GetConfig(0x01,param_ids_UICC_getOtherContext);
+        if(status == NFA_STATUS_OK)
+        {
+            android::sNfaGetConfigEvent.wait();
+        }
+        memcpy(dualUiccInfo.sUicc2TechCapblty, sConfig, sCurrentConfigLen);
+        write_uicc_context(dualUiccInfo.sUicc2Cntx,  dualUiccInfo.sUicc2CntxLen, dualUiccInfo.sUicc2TechCapblty, 10, 1, sSelectedUicc);
+
+    }
+    ALOGD ("%s: Exit", __FUNCTION__);
+}
+
+/**********************************************************************************
+ **
+ ** Function:        write_uicc_context
+ **
+ ** Description:     write UICC context to file
+ **
+ ** Returns:         none
+ **
+ **********************************************************************************/
+void write_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTechCap, UINT16 uiccTechCapLen, UINT8 block, uint8_t slotnum)
+{
+    char filename[256], filename2[256];
+    UINT8   cntx_len = 128;
+    UINT8   techCap = 10;
+    UINT8*  frameByte;
+    UINT16  crcVal = 0;
+    ALOGD("%s : enter", __FUNCTION__);
+
+    memset (filename, 0, sizeof(filename));
+    memset (filename2, 0, sizeof(filename2));
+    strcpy(filename2, "/data/nfc");
+    strncat(filename2, "/nxpStorage.bin", sizeof(filename2)-strlen(filename2)-1);
+
+    if (strlen(filename2) > 200)
+    {
+        ALOGE ("%s: filename too long", __FUNCTION__);
+        return;
+    }
+    sprintf (filename, "%s%u", filename2, block);
+    ALOGD ("%s: bytes=%u; file=%s slotnum=%d", __FUNCTION__, uiccContextLen, filename, slotnum);
+
+    int fileStream = 0;
+
+    fileStream = open (filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    if (fileStream >= 0)
+    {
+        size_t actualWrittenCntx = 0;
+        size_t actualWrittenCrc = 0;
+        size_t actualWrittenTechCap = 0;
+        size_t actualWrittenCntxLen = 0;
+
+        if(slotnum == 1)
+        {
+            lseek(fileStream, 0, SEEK_SET);
+        }
+        else if(slotnum == 2)
+        {
+            lseek(fileStream, sizeof(dualUiccInfo.sUicc1Cntx)+sizeof(dualUiccInfo.sUicc1TechCapblty), SEEK_SET);
+        }
+
+        actualWrittenCntxLen = write(fileStream, &uiccContextLen, 1);
+        if(uiccContextLen > 0x00)
+        {
+            cntx_len = uiccContextLen;
+            techCap  = uiccTechCapLen;
+            crcVal   = calc_crc16(uiccContext,cntx_len);
+        }
+
+        frameByte = (UINT8 *)&crcVal;
+        ALOGD ("%s:CRC calculated %02x %02x", __FUNCTION__, frameByte[0],frameByte[1]);
+
+        actualWrittenCntx = write (fileStream, uiccContext, cntx_len);
+        actualWrittenCrc  = write (fileStream, frameByte, sizeof(crcVal));
+        actualWrittenTechCap = write (fileStream, uiccTechCap, techCap);
+
+        ALOGD ("%s: %zu bytes written", __FUNCTION__, cntx_len);
+        if ((actualWrittenCntx == cntx_len) && (actualWrittenTechCap == techCap))
+        {
+            ALOGD("Write Success!");
+        }
+        else
+        {
+            ALOGE ("%s: fail to write", __FUNCTION__);
+        }
+        close (fileStream);
+    }
+    else
+    {
+        ALOGE ("%s: fail to open, error = %d", __FUNCTION__, errno);
+    }
+    ALOGD("%s : exit", __FUNCTION__);
+}
+
+/**********************************************************************************
+ **
+ ** Function:        read_uicc_context
+ **
+ ** Description:     read UICC context from file
+ **
+ ** Returns:         none
+ **
+ **********************************************************************************/
+void read_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTechCap, UINT16 uiccTechCapLen, UINT8 block, uint8_t slotnum)
+{
+    char filename[256], filename2[256];
+    UINT8*  readCrc = NULL;
+    UINT8*  frameByte = NULL;
+    UINT16  crcVal;
+    UINT8   cmpStat;
+    ALOGD("%s : enter", __FUNCTION__);
+
+    memset (filename, 0, sizeof(filename));
+    memset (filename2, 0, sizeof(filename2));
+    strcpy(filename2, "/data/nfc");
+    strncat(filename2, "/nxpStorage.bin", sizeof(filename2)-strlen(filename2)-1);
+    if (strlen(filename2) > 200)
+    {
+        ALOGE ("%s: filename too long", __FUNCTION__);
+        return;
+    }
+    sprintf (filename, "%s%u", filename2, block);
+
+    ALOGD ("%s: buffer len=%u; file=%s, slotnum=%d", __FUNCTION__, uiccContextLen, filename, slotnum);
+    int fileStream = open (filename, O_RDONLY);
+    if (fileStream >= 0)
+    {
+        size_t actualReadCntx = 0;
+        size_t actualReadCntxLen = 0;
+        size_t actualReadCrc = 0;
+        size_t actualReadTechCap = 0;
+        uint8_t readCntxLen = 0;
+
+        if(slotnum == 1)
+        {
+            lseek(fileStream, 0, SEEK_SET);
+        }
+        else if(slotnum == 2)
+        {
+            lseek(fileStream, sizeof(dualUiccInfo.sUicc1Cntx)+sizeof(dualUiccInfo.sUicc1TechCapblty), SEEK_SET);
+        }
+        actualReadCntxLen = read(fileStream, &readCntxLen, 1);
+        if(readCntxLen > 0x00)
+        {
+            actualReadCntx      = read (fileStream, uiccContext, readCntxLen);
+            readCrc = (UINT8*) malloc(2*sizeof(UINT8));
+            actualReadCrc       = read (fileStream, readCrc, sizeof(crcVal));
+            crcVal   = calc_crc16(uiccContext,readCntxLen);
+            frameByte = (UINT8 *)&crcVal;
+            actualReadTechCap   = read (fileStream, uiccTechCap, uiccTechCapLen);
+
+            ALOGD ("%s:CRC calculated %02x %02x -- CRC read %02x %02x", __FUNCTION__, frameByte[0],frameByte[1],readCrc[0],readCrc[1]);
+            cmpStat             = memcmp (readCrc, frameByte, sizeof(crcVal));
+            if(cmpStat == 0)
+            {
+                ALOGD ("%s:CRC check result - success",__FUNCTION__);
+            }
+            else
+            {
+                ALOGD ("%s:CRC check result - failed. Resetting buffer",__FUNCTION__);
+                memset(uiccContext,0x00,128);
+                memset(uiccTechCap,0x00,10);
+                write_uicc_context(uiccContext,  0, uiccTechCap, 10, 1, slotnum);
+            }
+            free(readCrc);
+        }
+        else
+        {
+            memset(uiccContext,0x00,128);
+            memset(uiccTechCap,0x00,10);
+        }
+
+        if(slotnum == 1)      dualUiccInfo.sUicc1CntxLen = readCntxLen;
+        else if(slotnum == 2) dualUiccInfo.sUicc2CntxLen = readCntxLen;
+
+        close (fileStream);
+        if (actualReadCntx > 0)
+        {
+            ALOGD ("%s: data size=%zu", __FUNCTION__, actualReadCntx);
+        }
+        else
+        {
+            ALOGE ("%s: fail to read", __FUNCTION__);
+        }
+    }
+    else
+    {
+        ALOGD ("%s: fail to open", __FUNCTION__);
+    }
+    ALOGD("%s : exit", __FUNCTION__);
+}
+
+/*******************************************************************************
+**
+** Function         calc_crc16
+**
+** Description      Calculates CRC16 for the frame buffer
+**
+** Parameters       pBuff - CRC16 calculation input buffer
+**                  wLen  - input buffer length
+**
+** Returns          wCrc  - computed 2 byte CRC16 value
+**
+*******************************************************************************/
+UINT16 calc_crc16(UINT8* pBuff, UINT16 wLen)
+{
+    UINT16 wTmp;
+    UINT16 wValue;
+    UINT16 wCrc = 0xffff;
+    UINT32 i;
+    UINT16 aCrcTab[256] = {
+            0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7, 0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad,
+            0xe1ce, 0xf1ef, 0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6, 0x9339, 0x8318, 0xb37b,
+            0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de, 0x2462, 0x3443, 0x0420, 0x1401, 0x64e6, 0x74c7, 0x44a4, 0x5485,
+            0xa56a, 0xb54b, 0x8528, 0x9509, 0xe5ee, 0xf5cf, 0xc5ac, 0xd58d, 0x3653, 0x2672, 0x1611, 0x0630, 0x76d7,
+            0x66f6, 0x5695, 0x46b4, 0xb75b, 0xa77a, 0x9719, 0x8738, 0xf7df, 0xe7fe, 0xd79d, 0xc7bc, 0x48c4, 0x58e5,
+            0x6886, 0x78a7, 0x0840, 0x1861, 0x2802, 0x3823, 0xc9cc, 0xd9ed, 0xe98e, 0xf9af, 0x8948, 0x9969, 0xa90a,
+            0xb92b, 0x5af5, 0x4ad4, 0x7ab7, 0x6a96, 0x1a71, 0x0a50, 0x3a33, 0x2a12, 0xdbfd, 0xcbdc, 0xfbbf, 0xeb9e,
+            0x9b79, 0x8b58, 0xbb3b, 0xab1a, 0x6ca6, 0x7c87, 0x4ce4, 0x5cc5, 0x2c22, 0x3c03, 0x0c60, 0x1c41, 0xedae,
+            0xfd8f, 0xcdec, 0xddcd, 0xad2a, 0xbd0b, 0x8d68, 0x9d49, 0x7e97, 0x6eb6, 0x5ed5, 0x4ef4, 0x3e13, 0x2e32,
+            0x1e51, 0x0e70, 0xff9f, 0xefbe, 0xdfdd, 0xcffc, 0xbf1b, 0xaf3a, 0x9f59, 0x8f78, 0x9188, 0x81a9, 0xb1ca,
+            0xa1eb, 0xd10c, 0xc12d, 0xf14e, 0xe16f, 0x1080, 0x00a1, 0x30c2, 0x20e3, 0x5004, 0x4025, 0x7046, 0x6067,
+            0x83b9, 0x9398, 0xa3fb, 0xb3da, 0xc33d, 0xd31c, 0xe37f, 0xf35e, 0x02b1, 0x1290, 0x22f3, 0x32d2, 0x4235,
+            0x5214, 0x6277, 0x7256, 0xb5ea, 0xa5cb, 0x95a8, 0x8589, 0xf56e, 0xe54f, 0xd52c, 0xc50d, 0x34e2, 0x24c3,
+            0x14a0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405, 0xa7db, 0xb7fa, 0x8799, 0x97b8, 0xe75f, 0xf77e, 0xc71d,
+            0xd73c, 0x26d3, 0x36f2, 0x0691, 0x16b0, 0x6657, 0x7676, 0x4615, 0x5634, 0xd94c, 0xc96d, 0xf90e, 0xe92f,
+            0x99c8, 0x89e9, 0xb98a, 0xa9ab, 0x5844, 0x4865, 0x7806, 0x6827, 0x18c0, 0x08e1, 0x3882, 0x28a3, 0xcb7d,
+            0xdb5c, 0xeb3f, 0xfb1e, 0x8bf9, 0x9bd8, 0xabbb, 0xbb9a, 0x4a75, 0x5a54, 0x6a37, 0x7a16, 0x0af1, 0x1ad0,
+            0x2ab3, 0x3a92, 0xfd2e, 0xed0f, 0xdd6c, 0xcd4d, 0xbdaa, 0xad8b, 0x9de8, 0x8dc9, 0x7c26, 0x6c07, 0x5c64,
+            0x4c45, 0x3ca2, 0x2c83, 0x1ce0, 0x0cc1, 0xef1f, 0xff3e, 0xcf5d, 0xdf7c, 0xaf9b, 0xbfba, 0x8fd9, 0x9ff8,
+            0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0 };
+
+    if((NULL == pBuff) || (0 == wLen))
+    {
+        ALOGD ("%s: Invalid Params supplied", __FUNCTION__);
+    }
+    else
+    {
+        /* Perform CRC calculation according to ccitt with a initial value of 0x1d0f */
+        for (i = 0; i < wLen; i++)
+        {
+            wValue = 0x00ffU & (UINT16) pBuff[i];
+            wTmp = (wCrc >> 8U) ^ wValue;
+            wCrc = (wCrc << 8U) ^ aCrcTab[wTmp];
+        }
+    }
+
+    return wCrc;
 }
 
 /**********************************************************************************
