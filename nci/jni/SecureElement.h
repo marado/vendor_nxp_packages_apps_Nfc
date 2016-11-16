@@ -590,6 +590,19 @@ public:
      **
     *******************************************************************************/
     bool updateEEStatus ();
+
+    /*******************************************************************************
+     **
+     ** Function:        isTeckInfoReceived
+     **
+     ** Description:     isTeckInfoReceived
+     **                  Checks if discovery_req_ntf received
+     **                  for a given EE
+     **
+     ** Returns:         True if ok.
+     **
+     *******************************************************************************/
+    bool isTeckInfoReceived (UINT16 eeHandle);
 #endif
 #endif
 #if(NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))

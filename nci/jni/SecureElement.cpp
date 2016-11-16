@@ -442,6 +442,43 @@ bool SecureElement::updateEEStatus ()
     ALOGD ("%s: exit", __FUNCTION__);
     return (true);
 }
+
+/*******************************************************************************
+ **
+ ** Function:        isTeckInfoReceived
+ **
+ ** Description:     isTeckInfoReceived
+ **                  Checks if discovery_req_ntf received
+ **                  for a given EE
+ **
+ ** Returns:         True if discovery_req_ntf is received.
+ **
+ *******************************************************************************/
+bool SecureElement::isTeckInfoReceived (UINT16 eeHandle)
+{
+    ALOGD ("%s: enter", __FUNCTION__);
+    bool stat = false;
+    if (! getEeInfo())
+    {
+        ALOGE ("%s: No updated eeInfo available", __FUNCTION__);
+        stat = false;
+    }
+    else
+    {
+        for (UINT8 xx = 0; xx < mActualNumEe; xx++)
+        {
+            if ((mEeInfo[xx].ee_handle == eeHandle) &&
+                    ((mEeInfo[xx].la_protocol != 0x00) || (mEeInfo[xx].lb_protocol != 0x00) ||
+                            (mEeInfo[xx].lf_protocol != 0x00) || (mEeInfo[xx].lbp_protocol != 0x00)))
+            {
+                stat = true;
+                break;
+            }
+        }
+    }
+    ALOGD ("%s: stat : 0x%02x", __FUNCTION__,stat);
+    return stat;
+}
 #endif
 /*******************************************************************************
 **
