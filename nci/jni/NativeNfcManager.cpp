@@ -1908,7 +1908,6 @@ static jboolean nfcManager_doInitialize (JNIEnv* e, jobject o)
     gActualSeCount = 0;
     UINT8 configData = 0;
     UINT8 switchToUiccSlot = 0;
-    unsigned long uicc_active_state = 0;
 #if(NXP_EXTNS == TRUE)
     rfActivation = false;
     tNFA_PMID ven_config_addr[]  = {0xA0, 0x07};
@@ -2978,10 +2977,18 @@ static jboolean nfcManager_doDeinitialize (JNIEnv*, jobject)
 
     if (sIsNfaEnabled)
     {
-        stat = SetVenConfigValue(NFC_MODE_OFF);
-        if (stat != NFA_STATUS_OK)
+        /*
+         During device Power-Off while Nfc-On, Nfc mode will be NFC_MODE_ON
+         NFC_MODE_OFF indicates Nfc is turning off and only in this case reset the venConfigValue
+         */
+        if(gGeneralPowershutDown == NFC_MODE_OFF)
         {
-            ALOGE ("%s: fail enable SetVenConfigValue; error=0x%X", __FUNCTION__, stat);
+            stat = SetVenConfigValue(NFC_MODE_OFF);
+
+            if (stat != NFA_STATUS_OK)
+            {
+                ALOGE ("%s: fail enable SetVenConfigValue; error=0x%X", __FUNCTION__, stat);
+            }
         }
         SyncEventGuard guard (sNfaDisableEvent);
         EXTNS_Close ();
@@ -5260,11 +5267,11 @@ static void nfcManager_doSetScreenOrPowerState (JNIEnv* e, jobject o, jint state
     {
         if(sIsNfaEnabled)
         {
-            nfcManager_doSetNfcMode(e , o, NFC_MODE_ON);
+            nfcManager_doSetNfcMode(e , o, NFC_MODE_ON); //POWER_OFF NFC_ON
         }
         else
         {
-            nfcManager_doSetNfcMode(e , o, NFC_MODE_OFF);
+            nfcManager_doSetNfcMode(e , o, NFC_MODE_OFF); //POWER_OFF NFC_OFF
         }
     }
     else
@@ -6262,7 +6269,7 @@ void write_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTe
         actualWrittenCrc  = write (fileStream, frameByte, sizeof(crcVal));
         actualWrittenTechCap = write (fileStream, uiccTechCap, techCap);
 
-        ALOGD ("%s: %zu bytes written", __FUNCTION__, cntx_len);
+        ALOGD ("%s: %hhu bytes written", __FUNCTION__, cntx_len);
         if ((actualWrittenCntx == cntx_len) && (actualWrittenTechCap == techCap))
         {
             ALOGD("Write Success!");
