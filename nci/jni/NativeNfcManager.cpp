@@ -6224,15 +6224,15 @@ void write_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTe
 
     memset (filename, 0, sizeof(filename));
     memset (filename2, 0, sizeof(filename2));
-    strcpy(filename2, "/data/nfc");
-    strncat(filename2, "/nxpStorage.bin", sizeof(filename2)-strlen(filename2)-1);
+    strlcpy(filename2, "/data/nfc", sizeof(filename2));
+    strlcat(filename2, "/nxpStorage.bin", sizeof(filename2));
 
     if (strlen(filename2) > 200)
     {
         ALOGE ("%s: filename too long", __FUNCTION__);
         return;
     }
-    sprintf (filename, "%s%u", filename2, block);
+    snprintf (filename, sizeof(filename), "%s%u", filename2, block);
     ALOGD ("%s: bytes=%u; file=%s slotnum=%d", __FUNCTION__, uiccContextLen, filename, slotnum);
 
     int fileStream = 0;
@@ -6307,14 +6307,14 @@ void read_uicc_context(UINT8 *uiccContext, UINT16 uiccContextLen, UINT8 *uiccTec
 
     memset (filename, 0, sizeof(filename));
     memset (filename2, 0, sizeof(filename2));
-    strcpy(filename2, "/data/nfc");
-    strncat(filename2, "/nxpStorage.bin", sizeof(filename2)-strlen(filename2)-1);
+    strlcpy(filename2, "/data/nfc", sizeof(filename2));
+    strlcat(filename2, "/nxpStorage.bin", sizeof(filename2));
     if (strlen(filename2) > 200)
     {
         ALOGE ("%s: filename too long", __FUNCTION__);
         return;
     }
-    sprintf (filename, "%s%u", filename2, block);
+    snprintf (filename, sizeof(filename), "%s%u", filename2, block);
 
     ALOGD ("%s: buffer len=%u; file=%s, slotnum=%d", __FUNCTION__, uiccContextLen, filename, slotnum);
     int fileStream = open (filename, O_RDONLY);
