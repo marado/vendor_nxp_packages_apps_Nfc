@@ -63,7 +63,12 @@ LOCAL_CFLAGS += -DNFC_NXP_ESE=FALSE
 endif
 
 #### Select the CHIP ####
+# Check NQ3XX_PRESENT flag to support NQ3XX chipsets
+ifeq ($(strip $(NQ3XX_PRESENT)),true)
+NXP_CHIP_TYPE := $(PN553)
+else
 NXP_CHIP_TYPE := $(PN548C2)
+endif
 
 ifeq ($(NXP_CHIP_TYPE),$(PN547C2))
 LOCAL_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN547C2
@@ -73,6 +78,12 @@ else ifeq ($(NXP_CHIP_TYPE),$(PN551))
 LOCAL_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN551
 else ifeq ($(NXP_CHIP_TYPE),$(PN553))
 LOCAL_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN553
+endif
+
+ifeq ($(call is-board-platform-in-list,msm8909w msm8916 msm8994 msm8909 msm8996 msm8992 msm8952 msm8937 msm8953 msm8998),true)
+LOCAL_CFLAGS += -DNQ_NFC_DUAL_UICC=FALSE
+else
+LOCAL_CFLAGS += -DNQ_NFC_DUAL_UICC=TRUE
 endif
 
 ifeq ($(NXP_CHIP_TYPE),$(PN553))
