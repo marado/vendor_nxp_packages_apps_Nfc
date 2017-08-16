@@ -112,7 +112,7 @@ UINT8                       sSelectedUicc = 0;
 #if ((NFC_NXP_ESE ==  TRUE) && (NXP_ESE_ETSI_READER_ENABLE == TRUE))
 extern Rdr_req_ntf_info_t   swp_rdr_req_ntf_info;
 #endif
-#if ((NXP_NFCC_ESE_UICC_CONCURRENT_ACCESS_PROTECTION == TRUE) && (NFC_NXP_ESE == TRUE))
+#if (NXP_EXTNS == TRUE)
 Mutex gDiscMutex;
 #endif
 #if(NXP_NFCC_HCE_F == TRUE)
@@ -140,7 +140,7 @@ namespace android
     extern void nativeNfcTag_formatStatus (bool is_ok);
     extern void nativeNfcTag_resetPresenceCheck ();
     extern void nativeNfcTag_doReadCompleted (tNFA_STATUS status);
-    extern void nativeNfcTag_setRfInterface (tNFA_ACTIVATED& activated);
+    extern void nativeNfcTag_setRfInterface (tNFA_INTF_TYPE rfInterface);
     extern void nativeNfcTag_abortWaits ();
     extern void doDwpChannel_ForceExit();
     extern void nativeLlcpConnectionlessSocket_abortWait ();
@@ -637,25 +637,28 @@ nfc_jni_native_data *getNative (JNIEnv* e, jobject o)
 *******************************************************************************/
 static void handleRfDiscoveryEvent (tNFC_RESULT_DEVT* discoveredDevice)
 {
-int thread_ret;
+    int thread_ret;
+
     if(discoveredDevice->more == NCI_DISCOVER_NTF_MORE)
     {
-
         //there is more discovery notification coming
         NfcTag::getInstance ().mNumDiscNtf++;
         return;
     }
+
     NfcTag::getInstance ().mNumDiscNtf++;
-    ALOGD("Total Notifications - %d ", NfcTag::getInstance ().mNumDiscNtf);
+    ALOGD("%s: Total Notifications - %d ", __FUNCTION__, NfcTag::getInstance ().mNumDiscNtf);
+
     if(NfcTag::getInstance ().mNumDiscNtf > 1)
     {
         NfcTag::getInstance().mIsMultiProtocolTag = true;
     }
+
     bool isP2p = NfcTag::getInstance ().isP2pDiscovered ();
+
     if (!sReaderModeEnabled && isP2p)
     {
-        //select the peer that supports P2P
-        ALOGD(" select P2P");
+        ALOGD("%s: Select peer device", __FUNCTION__);
 #if(NXP_EXTNS == TRUE)
         if(multiprotocol_detected == 1)
         {
@@ -668,122 +671,121 @@ int thread_ret;
     else if(!sReaderModeEnabled && multiprotocol_flag)
     {
         NfcTag::getInstance ().mNumDiscNtf = 0x00;
-        multiprotocol_flag = 0;
+        multiprotocol_flag     = 0;
         multiprotocol_detected = 1;
-        ALOGD("Prio_Logic_multiprotocol Logic");
         pthread_attr_t attr;
         pthread_attr_init(&attr);
+        ALOGD("%s: starting p2p prio logic for multiprotocol tags", __FUNCTION__);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         thread_ret = pthread_create(&multiprotocol_thread, &attr,
                 p2p_prio_logic_multiprotocol, NULL);
         if(thread_ret != 0)
-            ALOGD("unable to create the thread");
+            ALOGE("%s: unable to create the thread", __FUNCTION__);
         pthread_attr_destroy(&attr);
-        ALOGD("Prio_Logic_multiprotocol start timer");
+        ALOGD("%s: starting timer for reconfigure default polling callback", __FUNCTION__);
         multiprotocol_timer.set (300, reconfigure_poll_cb);
     }
 #endif
     else
     {
+        multiprotocol_flag = 1;
 #if(NXP_EXTNS == TRUE)
         NfcTag::getInstance ().mNumDiscNtf--;
 #endif
-        //select the first of multiple tags that is discovered
         NfcTag::getInstance ().selectFirstTag();
-        multiprotocol_flag = 1;
     }
 }
 
 #if(NXP_EXTNS == TRUE)
 void *p2p_prio_logic_multiprotocol(void* /* arg */)
 {
-tNFA_STATUS status = NFA_STATUS_FAILED;
-tNFA_TECHNOLOGY_MASK tech_mask = 0;
+    tNFA_STATUS status             = NFA_STATUS_FAILED;
+    tNFA_TECHNOLOGY_MASK tech_mask = 0x00;
 
-    ALOGD ("%s  ", __FUNCTION__);
-/* Do not need if it is already in screen off state */
-if ((getScreenState() != NFA_SCREEN_STATE_OFF))
-{
-    if (sRfEnabled) {
-        // Stop RF discovery to reconfigure
-        startRfDiscovery(false);
-    }
-
+    ALOGD ("%s: enter", __FUNCTION__);
+    /* Do not need if it is already in screen off state */
+    if ((getScreenState() != NFA_SCREEN_STATE_OFF))
     {
-        SyncEventGuard guard (sNfaEnableDisablePollingEvent);
-        status = NFA_DisablePolling ();
-        if (status == NFA_STATUS_OK)
+        /* Stop polling */
+        if (sRfEnabled)
         {
-            sNfaEnableDisablePollingEvent.wait (); //wait for NFA_POLL_DISABLED_EVT
-        }else
-        ALOGE ("%s: Failed to disable polling; error=0x%X", __FUNCTION__, status);
-    }
+            startRfDiscovery(false);
+        }
 
-    if(multiprotocol_detected)
-    {
-        ALOGD ("Enable Polling for TYPE F");
-        tech_mask = NFA_TECHNOLOGY_MASK_F;
-    }
-    else
-    {
-        ALOGD ("Enable Polling for ALL");
-        unsigned long num = 0;
-        if (GetNumValue(NAME_POLLING_TECH_MASK, &num, sizeof(num)))
-            tech_mask = num;
-        else
-            tech_mask = DEFAULT_TECH_MASK;
-    }
-
-    {
-        SyncEventGuard guard (sNfaEnableDisablePollingEvent);
-        status = NFA_EnablePolling (tech_mask);
-        if (status == NFA_STATUS_OK)
         {
-            ALOGD ("%s: wait for enable event", __FUNCTION__);
-            sNfaEnableDisablePollingEvent.wait (); //wait for NFA_POLL_ENABLED_EVT
+            SyncEventGuard guard (sNfaEnableDisablePollingEvent);
+            status = NFA_DisablePolling ();
+            if (status == NFA_STATUS_OK)
+            {
+                sNfaEnableDisablePollingEvent.wait ();
+            }else
+            ALOGE ("%s: Failed to disable polling; error=0x%X", __FUNCTION__, status);
+        }
+
+        if(multiprotocol_detected)
+        {
+            ALOGD ("%s: configure polling to tech F only", __FUNCTION__);
+            tech_mask = NFA_TECHNOLOGY_MASK_F;
         }
         else
         {
-            ALOGE ("%s: fail enable polling; error=0x%X", __FUNCTION__, status);
+            ALOGD ("%s: re-configure polling to default", __FUNCTION__);
+            unsigned long num = 0;
+            if (GetNumValue(NAME_POLLING_TECH_MASK, &num, sizeof(num)))
+                tech_mask = num;
+            else
+                tech_mask = DEFAULT_TECH_MASK;
+        }
+
+        {
+            SyncEventGuard guard (sNfaEnableDisablePollingEvent);
+            status = NFA_EnablePolling (tech_mask);
+            if (status == NFA_STATUS_OK)
+            {
+                ALOGD ("%s: wait for enable event", __FUNCTION__);
+                sNfaEnableDisablePollingEvent.wait ();
+            }
+            else
+            {
+                ALOGE ("%s: fail enable polling; error=0x%X", __FUNCTION__, status);
+            }
+        }
+
+        /* start polling */
+        if (!sRfEnabled)
+        {
+            startRfDiscovery(true);
         }
     }
-
-    /* start polling */
-    if (!sRfEnabled)
-    {
-        // Start RF discovery to reconfigure
-        startRfDiscovery(true);
-    }
-}
-return NULL;
+    ALOGD ("%s: exit", __FUNCTION__);
+    return NULL;
 }
 
 void reconfigure_poll_cb(union sigval)
 {
-    ALOGD ("Prio_Logic_multiprotocol timer expire");
-    ALOGD ("CallBack Reconfiguring the POLL to Default");
+    ALOGD ("%s: p2p device detection timer expired, callback to reconfigure polling", __FUNCTION__);
     clear_multiprotocol();
     multiprotocol_timer.set (300, multiprotocol_clear_flag);
 }
 
 void clear_multiprotocol()
 {
-int thread_ret;
-
-    ALOGD ("clear_multiprotocol");
+    int thread_ret;
+    ALOGD ("%s: enter", __FUNCTION__);
     multiprotocol_detected = 0;
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     thread_ret = pthread_create(&multiprotocol_thread, &attr, p2p_prio_logic_multiprotocol, NULL);
     if(thread_ret != 0)
-        ALOGD("unable to create the thread");
+        ALOGE("%s: unable to create the thread", __FUNCTION__);
     pthread_attr_destroy(&attr);
+    ALOGD ("%s: exit", __FUNCTION__);
 }
 
 void multiprotocol_clear_flag(union sigval)
 {
-    ALOGD ("multiprotocol_clear_flag");
+    ALOGD ("%s: reset multiprotocol_flag", __FUNCTION__);
     multiprotocol_flag = 1;
 }
 #endif
@@ -960,18 +962,20 @@ static void nfaConnectionCallback (UINT8 connEvent, tNFA_CONN_EVT_DATA* eventDat
 
             NfcTag::getInstance().selectCompleteStatus(true);
 
-            /***P2P-Prio Logic for Multiprotocol***/
-            if( (eventData->activated.activate_ntf.protocol == NFA_PROTOCOL_NFC_DEP) && (multiprotocol_detected == 1) )
+            /***p2p priority logic for same technology but multiple-protocol tags***/
+            if(multiprotocol_detected)
             {
-                ALOGD("Prio_Logic_multiprotocol stop timer");
-                multiprotocol_timer.kill();
-            }
-
-            if( (eventData->activated.activate_ntf.protocol == NFA_PROTOCOL_T3T) && (multiprotocol_detected == 1) )
-            {
-                ALOGD("Prio_Logic_multiprotocol stop timer");
-                multiprotocol_timer.kill();
-                clear_multiprotocol();
+                if((eventData->activated.activate_ntf.protocol == NFA_PROTOCOL_NFC_DEP))
+                {
+                    ALOGD("%s: p2p device detected, stop timer");
+                    multiprotocol_timer.kill();
+                }
+                else if((eventData->activated.activate_ntf.protocol == NFA_PROTOCOL_T3T))
+                {
+                    ALOGD("%s: t3t tag detected, stop timer and p2p prio multiproto logic");
+                    multiprotocol_timer.kill();
+                    clear_multiprotocol();
+                }
             }
 #endif
 #if ((NFC_NXP_ESE ==  TRUE) && (NXP_ESE_ETSI_READER_ENABLE == TRUE))
@@ -987,7 +991,7 @@ static void nfaConnectionCallback (UINT8 connEvent, tNFA_CONN_EVT_DATA* eventDat
 #endif
             if((eventData->activated.activate_ntf.protocol != NFA_PROTOCOL_NFC_DEP) && (!isListenMode(eventData->activated)))
             {
-                nativeNfcTag_setRfInterface(eventData->activated);
+                nativeNfcTag_setRfInterface ((tNFA_INTF_TYPE) eventData->activated.activate_ntf.intf_param.type);
             }
 
             if (EXTNS_GetConnectFlag() == TRUE)
@@ -1794,6 +1798,7 @@ void nfaDeviceManagementCallback (UINT8 dmEvent, tNFA_DM_CBACK_DATA* eventData)
     case NFA_DM_EE_HCI_DISABLE:
     {
         ALOGD("NFA_DM_EE_HCI_DISABLE wait releasing");
+        SyncEventGuard guard (sNfceeHciCbDisableEvent);
         sNfceeHciCbDisableEvent.notifyOne();
         ALOGD("NFA_DM_EE_HCI_DISABLE wait released");
         break;
@@ -1801,6 +1806,7 @@ void nfaDeviceManagementCallback (UINT8 dmEvent, tNFA_DM_CBACK_DATA* eventData)
     case NFA_DM_EE_HCI_ENABLE:
     {
         ALOGD("NFA_DM_EE_HCI_ENABLE wait releasing");
+        SyncEventGuard guard (sNfceeHciCbEnableEvent);
         sNfceeHciCbEnableEvent.notifyOne();
         ALOGD("NFA_DM_EE_HCI_ENABLE wait released");
         break;
@@ -4742,8 +4748,14 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
      * NFA EE and HCI Subsystem de-init*/
     {
         SyncEventGuard guard (sNfceeHciCbDisableEvent);
+        ALOGD("sNfceeHciCbDisableEvent waiting ......");
         NFA_EE_HCI_Control(false);
-        sNfceeHciCbDisableEvent.wait(500);
+        if(sNfceeHciCbDisableEvent.wait(500) == false)
+        {
+            ALOGD("sNfceeHciCbDisableEvent.wait Timeout happened");
+        }else{
+            ALOGD("sNfceeHciCbDisableEvent.wait success");
+        }
     }
 
     /*Reset Nfcc*/
@@ -4752,7 +4764,14 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
     {
         SyncEventGuard guard (sNfceeHciCbEnableEvent);
         NFA_EE_HCI_Control(true);
-        sNfceeHciCbEnableEvent.wait (500);
+        ALOGD("sNfceeHciCbEnableEvent waiting ......");
+        if(sNfceeHciCbEnableEvent.wait (500) == false)
+        {
+            ALOGD("sNfceeHciCbEnableEvent.wait Timeout happened");
+        }else{
+            ALOGD("sNfceeHciCbEnableEvent.wait success");
+        }
+
     }
 
     {
@@ -5172,7 +5191,12 @@ void startRfDiscovery(bool isStart)
         return;
     }
 
-#if((NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE) && (NXP_NFCC_ESE_UICC_CONCURRENT_ACCESS_PROTECTION == TRUE))
+#if(NXP_EXTNS == TRUE)
+    if(isStart == sRfEnabled)
+    {
+        ALOGD("%s Already in RF state: %d", __FUNCTION__, isStart);
+        return;
+    }
     gDiscMutex.lock();
 #endif
     ALOGD ("%s: is start=%d", __FUNCTION__, isStart);
@@ -5190,7 +5214,7 @@ void startRfDiscovery(bool isStart)
     {
         ALOGE ("%s: Failed to start/stop RF discovery; error=0x%X", __FUNCTION__, status);
     }
-#if((NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE) && (NXP_NFCC_ESE_UICC_CONCURRENT_ACCESS_PROTECTION == TRUE))
+#if(NXP_EXTNS == TRUE)
     gDiscMutex.unlock();
 #endif
     ALOGD ("%s: is exit=%d", __FUNCTION__, isStart);
@@ -5674,7 +5698,7 @@ int getScreenState()
     return screenstate;
 }
 
-#if(NFC_NXP_ESE == TRUE && (NFC_NXP_CHIP_TYPE != PN547C2))
+#if(NFC_NXP_ESE == TRUE)
 /*******************************************************************************
 **
 ** Function:        isp2pActivated
