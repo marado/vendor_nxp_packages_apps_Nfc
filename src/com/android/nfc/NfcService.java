@@ -46,6 +46,7 @@ import android.nfc.IAppCallback;
 import android.nfc.INfcAdapter;
 import android.nfc.INfcAdapterExtras;
 import android.nfc.INfcCardEmulation;
+import android.nfc.INfcDta;
 import android.nfc.INfcFCardEmulation;
 import android.nfc.INfcTag;
 import android.nfc.INfcUnlockHandler;
@@ -69,6 +70,7 @@ import android.os.Process;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.Settings;
@@ -177,6 +179,8 @@ public class NfcService implements DeviceHostListener {
     public static final String ACTION_RF_FIELD_OFF_DETECTED =
             "com.android.nfc_extras.action.RF_FIELD_OFF_DETECTED";
 
+    public static boolean sIsShortRecordLayout = false;
+
     // for use with playSound()
     public static final int SOUND_START = 0;
     public static final int SOUND_END = 1;
@@ -253,6 +257,7 @@ public class NfcService implements DeviceHostListener {
     P2pLinkManager mP2pLinkManager;
     TagService mNfcTagService;
     NfcAdapterService mNfcAdapter;
+    NfcDtaService mNfcDtaService;
     boolean mIsDebugBuild;
     boolean mIsHceCapable;
     boolean mIsHceFCapable;
@@ -268,6 +273,7 @@ public class NfcService implements DeviceHostListener {
     private ForegroundUtils mForegroundUtils;
 
     private static NfcService sService;
+    public  static boolean sIsDtaMode = false;
 
     boolean mIsLiveCaseEnabled; // whether live cases are enabled
     int mLiveCaseTechnology; // Technology mask of accepted NFC tags
@@ -588,6 +594,7 @@ public class NfcService implements DeviceHostListener {
                         mPrefsEditor.putBoolean(PREF_FIRST_BOOT, false);
                         mPrefsEditor.apply();
                     }
+                    SystemProperties.set("nfc.initialized", "true");
                     break;
             }
 
@@ -630,6 +637,7 @@ public class NfcService implements DeviceHostListener {
             }
 
             nci_version = getNciVersion();
+            Log.d(TAG, "NCI_Version: " + nci_version);
 
             synchronized (NfcService.this) {
                 mObjectMap.clear();
@@ -1116,6 +1124,15 @@ public class NfcService implements DeviceHostListener {
         }
 
         @Override
+        public INfcDta getNfcDtaInterface(String pkg) throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+            if (mNfcDtaService == null) {
+                mNfcDtaService = new NfcDtaService();
+            }
+            return mNfcDtaService;
+        }
+
+        @Override
         public void addNfcUnlockHandler(INfcUnlockHandler unlockHandler, int[] techList) {
             NfcPermissions.enforceAdminPermissions(mContext);
 
@@ -1497,6 +1514,75 @@ public class NfcService implements DeviceHostListener {
         }
     }
 
+    final class NfcDtaService extends INfcDta.Stub {
+        public void enableDta() throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+            if(!sIsDtaMode) {
+                mDeviceHost.enableDtaMode();
+                sIsDtaMode = true;
+                Log.d(TAG, "DTA Mode is Enabled ");
+            }
+        }
+
+        public void disableDta() throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+            if(sIsDtaMode) {
+                mDeviceHost.disableDtaMode();
+                sIsDtaMode = false;
+            }
+        }
+
+        public boolean enableServer(String serviceName, int serviceSap, int miu,
+                int rwSize,int testCaseId) throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+
+            if(serviceName.equals(null))
+                return false;
+
+            mP2pLinkManager.enableExtDtaSnepServer(serviceName, serviceSap, miu, rwSize,testCaseId);
+            return true;
+        }
+
+        public void disableServer() throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+            mP2pLinkManager.disableExtDtaSnepServer();
+        }
+
+        public boolean enableClient(String serviceName, int miu, int rwSize,
+                int testCaseId) throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+
+            if(testCaseId == 0)
+                return false;
+
+            if (testCaseId>20){
+                sIsShortRecordLayout=true;
+                testCaseId=testCaseId-20;
+            } else {
+                sIsShortRecordLayout=false;
+            }
+            Log.d("testCaseId", ""+testCaseId);
+            mP2pLinkManager.enableDtaSnepClient(serviceName, miu, rwSize, testCaseId);
+            return true;
+        }
+
+        public void disableClient() throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+            mP2pLinkManager.disableDtaSnepClient();
+        }
+
+        public boolean registerMessageService(String msgServiceName)
+                throws RemoteException {
+            NfcPermissions.enforceAdminPermissions(mContext);
+            if(msgServiceName.equals(null))
+                return false;
+
+            DtaServiceConnector.setMessageService(msgServiceName);
+            return true;
+        }
+
+    };
+
     boolean isNfcEnabledOrShuttingDown() {
         synchronized (this) {
             return (mState == NfcAdapter.STATE_ON || mState == NfcAdapter.STATE_TURNING_OFF);
@@ -1650,8 +1736,8 @@ public class NfcService implements DeviceHostListener {
             paramsBuilder.setEnableP2p(false);
         }
 
-        if (mIsHceCapable && mScreenState >= ScreenStateHelper.SCREEN_STATE_ON_LOCKED) {
-            // Host routing is always enabled at lock screen or later
+        if (mIsHceCapable && mScreenState >= ScreenStateHelper.SCREEN_STATE_ON_LOCKED && mReaderModeParams == null) {
+            // Host routing is always enabled at lock screen or later, provided we aren't in reader mode
             paramsBuilder.setEnableHostRouting(true);
         }
 
@@ -2363,7 +2449,8 @@ public class NfcService implements DeviceHostListener {
                 mCardEmulationManager.dump(fd, pw, args);
             }
             mNfcDispatcher.dump(fd, pw, args);
-            pw.println(mDeviceHost.dump());
+            pw.flush();
+            mDeviceHost.dump(fd);
         }
     }
 }
