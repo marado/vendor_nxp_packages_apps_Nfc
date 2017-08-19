@@ -6,6 +6,8 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 include $(call all-makefiles-under,$(LOCAL_PATH))
 
+LOCAL_PRELINK_MODULE := false
+
 ifneq ($(NCI_VERSION),)
 LOCAL_CFLAGS += -DNCI_VERSION=$(NCI_VERSION) -O0 -g
 endif
@@ -16,6 +18,7 @@ PN547C2 := 1
 PN548C2 := 2
 PN551   := 3
 PN553   := 4
+PN557   := 5
 NQ110 := $PN547C2
 NQ120 := $PN547C2
 NQ210 := $PN548C2
@@ -33,6 +36,9 @@ LOCAL_CFLAGS += -DPN551=3
 endif
 ifeq ($(PN553),4)
 LOCAL_CFLAGS += -DPN553=4
+endif
+ifeq ($(PN557),5)
+LOCAL_CFLAGS += -DPN557=5
 endif
 
 #NXP PN547 Enable
@@ -78,6 +84,14 @@ else ifeq ($(NXP_CHIP_TYPE),$(PN551))
 LOCAL_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN551
 else ifeq ($(NXP_CHIP_TYPE),$(PN553))
 LOCAL_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN553
+else ifeq ($(NXP_CHIP_TYPE),$(PN557))
+LOCAL_CFLAGS += -DNFC_NXP_CHIP_TYPE=PN557
+endif
+
+ifeq ($(call is-board-platform-in-list,msm8909w msm8916 msm8994 msm8909 msm8996 msm8992 msm8952 msm8937 msm8953 msm8998),true)
+LOCAL_CFLAGS += -DNQ_NFC_DUAL_UICC=FALSE
+else
+LOCAL_CFLAGS += -DNQ_NFC_DUAL_UICC=TRUE
 endif
 
 ifeq ($(NXP_CHIP_TYPE),$(PN553))
