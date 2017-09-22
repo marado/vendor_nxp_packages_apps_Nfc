@@ -129,7 +129,8 @@ typedef enum
   TARGET_MSM8937                       = 294, /**< 8937 target */
   TARGET_MSM8953                       = 293, /**< 8953 target */
   TARGET_MSM8996                       = 246, /**< 8996 target*/
-  TARGET_MSM8909                       = 245, /**< 8909w target */
+  TARGET_MSM8909                       = 245, /**< 8909 target */
+  TARGET_MSM8909W                      = 300, /**< 8909w target */
   TARGET_MSM8998                       = 292, /**< 8998 target */
   TARGET_MSM8997                       = 306, /**< 8997 target */
   TARGET_MSM8917                       = 303, /**< 8997 target */
@@ -413,6 +414,7 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
         case TARGET_MSM8940:
         case TARGET_MSM8917:
         case TARGET_MSM8909:
+        case TARGET_MSM8909W:
             if (nq2xx_present) {
                 // NQ210 or NQ220
                 config_id = MTP_TYPE_DEFAULT;
