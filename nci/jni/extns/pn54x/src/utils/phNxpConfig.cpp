@@ -137,6 +137,7 @@ typedef enum
   TARGET_SDM660                        = 317, /**< SDM660 target */
   TARGET_SDM630                        = 318, /**< SDM630 target */
   TARGET_SDM845                        = 321, /**< SDM845 target */
+  TARGET_SDM450                        = 338, /**< SDM450 target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
   TARGET_INVALID                       = 0xFF
 } TARGETTYPE;
@@ -395,6 +396,10 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
                 strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
+        case TARGET_SDM450:
+            config_id = QRD_TYPE_NQ4XX;
+            strlcpy(config_file, config_name_qrd_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
+            break;
         default:
             config_id = QRD_TYPE_DEFAULT;
             strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
@@ -444,6 +449,10 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
                 config_id = MTP_TYPE_NQ3XX;
                 strlcpy(config_file, config_name_mtp_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
+            break;
+        case TARGET_SDM450:
+            config_id = MTP_TYPE_NQ4XX;
+            strlcpy(config_file, config_name_mtp_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = MTP_TYPE_DEFAULT;
