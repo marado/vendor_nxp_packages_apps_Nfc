@@ -136,6 +136,8 @@ typedef enum
   TARGET_MSM8940                       = 313, /**< 8997 target */
   TARGET_SDM660                        = 317, /**< SDM660 target */
   TARGET_SDM630                        = 318, /**< SDM630 target */
+  TARGET_SDM632                        = 349, /**< SDM632 target */
+  TARGET_SDM439                        = 353, /**< SDM439 target */
   TARGET_SDM845                        = 321, /**< SDM845 target */
   TARGET_SDM450                        = 338, /**< SDM450 target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
@@ -391,12 +393,14 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
                 // NQ210 or NQ220
                 config_id = QRD_TYPE_2;
                 strlcpy(config_file, config_name_qrd2, MAX_DATA_CONFIG_PATH_LEN);
-	    } else {
+            } else {
                 config_id = QRD_TYPE_NQ3XX;
                 strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
         case TARGET_SDM450:
+        case TARGET_SDM632:
+        case TARGET_SDM439:
             config_id = QRD_TYPE_NQ4XX;
             strlcpy(config_file, config_name_qrd_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
             break;
@@ -406,8 +410,8 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
             break;
         }
     }
-    // if target is MTP platform then config id is assigned here
-    else if (0 == strncmp(target_type, MTP_HW_PLATFORM, MAX_SOC_INFO_NAME_LEN)) {
+    // if target is not QRD platform then default config id is assigned here
+    else {
         switch (idx)
         {
         case TARGET_GENERIC:
@@ -451,6 +455,8 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
             }
             break;
         case TARGET_SDM450:
+        case TARGET_SDM632:
+        case TARGET_SDM439:
             config_id = MTP_TYPE_NQ4XX;
             strlcpy(config_file, config_name_mtp_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
             break;
