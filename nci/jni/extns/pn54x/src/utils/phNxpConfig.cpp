@@ -138,6 +138,7 @@ typedef enum
   TARGET_SDM630                        = 318, /**< SDM630 target */
   TARGET_SDM632                        = 349, /**< SDM632 target */
   TARGET_SDM439                        = 353, /**< SDM439 target */
+  TARGET_SDM429                        = 354, /**< SDM429 target */
   TARGET_SDM845                        = 321, /**< SDM845 target */
   TARGET_SDM450                        = 338, /**< SDM450 target */
   TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
@@ -361,10 +362,17 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
         case TARGET_MSM8940:
         case TARGET_MSM8917:
         case TARGET_MSM8909:
+        case TARGET_SDM450:
+        case TARGET_SDM632:
+        case TARGET_SDM439:
+        case TARGET_SDM429:
             if (nq2xx_present) {
                 // NQ210 or NQ220
                 config_id = QRD_TYPE_DEFAULT;
                 strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
+            } else if(!strncmp(nq_fw_ver, FW_MAJOR_NUM_NQ4xx, FW_MAJOR_NUM_LENGTH)){
+                config_id = QRD_TYPE_NQ4XX;
+                strlcpy(config_file, config_name_qrd_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
             } else {
                 config_id = QRD_TYPE_NQ3XX;
                 strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
@@ -398,12 +406,6 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
                 strlcpy(config_file, config_name_qrd_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
             break;
-        case TARGET_SDM450:
-        case TARGET_SDM632:
-        case TARGET_SDM439:
-            config_id = QRD_TYPE_NQ4XX;
-            strlcpy(config_file, config_name_qrd_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
-            break;
         default:
             config_id = QRD_TYPE_DEFAULT;
             strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
@@ -422,10 +424,17 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
         case TARGET_MSM8940:
         case TARGET_MSM8917:
         case TARGET_MSM8909:
+        case TARGET_SDM450:
+        case TARGET_SDM632:
+        case TARGET_SDM439:
+        case TARGET_SDM429:
             if (nq2xx_present) {
                 // NQ210 or NQ220
                 config_id = MTP_TYPE_DEFAULT;
                 strlcpy(config_file, config_name_mtp, MAX_DATA_CONFIG_PATH_LEN);
+            } else if (!strncmp(nq_fw_ver, FW_MAJOR_NUM_NQ4xx, FW_MAJOR_NUM_LENGTH)){
+                config_id = MTP_TYPE_NQ4XX;
+                strlcpy(config_file, config_name_mtp_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
             } else {
                 config_id = MTP_TYPE_NQ3XX;
                 strlcpy(config_file, config_name_mtp_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
@@ -453,12 +462,6 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
                 config_id = MTP_TYPE_NQ3XX;
                 strlcpy(config_file, config_name_mtp_NQ3XX, MAX_DATA_CONFIG_PATH_LEN);
             }
-            break;
-        case TARGET_SDM450:
-        case TARGET_SDM632:
-        case TARGET_SDM439:
-            config_id = MTP_TYPE_NQ4XX;
-            strlcpy(config_file, config_name_mtp_NQ4XX, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = MTP_TYPE_DEFAULT;
