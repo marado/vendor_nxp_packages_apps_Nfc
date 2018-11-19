@@ -49,7 +49,7 @@ public class NativeNfcManager implements DeviceHost {
     static final String DRIVER_NAME = "android-nci";
 
     static {
-        System.loadLibrary("nqnfc_nci_jni");
+        System.loadLibrary("sn100nfc_nci_jni");
     }
 
     /* Native structure */
@@ -589,9 +589,6 @@ public class NativeNfcManager implements DeviceHost {
         mListener.onNfcTransactionEvent(aid, data, evtSrc);
     }
 /* NXP extension are here */
-    @Override
-    public native boolean doCheckJcopDlAtBoot();
-
     @Override
     public native int getFWVersion();
     @Override
