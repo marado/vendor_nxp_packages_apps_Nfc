@@ -70,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import com.android.nfc.cardemulation.RegisteredServicesCache;
+import com.nxp.nfc.NxpConstants;
 
 public class RegisteredNxpServicesCache {
     static final String TAG = "RegisteredNxpServicesCache";
@@ -375,8 +376,22 @@ public class RegisteredNxpServicesCache {
                             resolveInfo.serviceInfo.name = currentComponent.getClassName();
                             NQApduServiceInfo.ESeInfo mEseInfo = new NQApduServiceInfo.ESeInfo(seId,powerstate);
                             ArrayList<android.nfc.cardemulation.NQAidGroup> staticNQAidGroups = null;
-                            apduService = new NQApduServiceInfo(resolveInfo,onHost,description,staticNQAidGroups, dynamicNQAidGroup,
-                                                               requiresUnlock,bannerId,userId, "Fixme: NXP:<Activity Name>", mEseInfo,null, byteArrayBanner, modifiable);
+
+                            String offHostName, staticOffHostName;
+                            if(seId == NxpConstants.UICC_ID_TYPE) {
+                                offHostName = "SIM1";
+                            } else if (seId == NxpConstants.UICC2_ID_TYPE) {
+                                offHostName = "SIM2";
+                            } else if (seId == NxpConstants.UICC2_ID_TYPE) {
+                                offHostName = "eSE1";
+                            } else {
+                                offHostName = null;
+                                Log.e(TAG,"Invalid seId");
+                            }
+                            staticOffHostName = offHostName;
+
+                            apduService = new NQApduServiceInfo(resolveInfo,description,staticNQAidGroups, dynamicNQAidGroup,
+                                                               requiresUnlock,bannerId,userId, "Fixme: NXP:<Activity Name>", mEseInfo,null, byteArrayBanner, modifiable, offHostName, staticOffHostName);
                             mApduServices.put(currentComponent, apduService);
                             Log.d(TAG,"mApduServices size= "+ mApduServices.size());
                             dynamicNQAidGroup.clear();
