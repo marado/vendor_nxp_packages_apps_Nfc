@@ -51,7 +51,7 @@ LOCAL_C_INCLUDES += \
     vendor/nxp/opensource/halimpl/extns/impl
 
 LOCAL_SHARED_LIBRARIES := \
-    libicuuc \
+    libandroidicu \
     libnativehelper \
     libcutils \
     libutils \
