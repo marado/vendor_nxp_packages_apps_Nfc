@@ -29,6 +29,7 @@
 #include "RoutingManager.h"
 #include "SecureElement.h"
 #include "phNxpConfig.h"
+#include "nfc_config.h"
 
 using android::base::StringPrintf;
 
@@ -48,6 +49,7 @@ extern void com_android_nfc_NfcManager_enableDiscovery(JNIEnv* e, jobject o,
 extern bool isLowRamDevice();
 extern int gMaxEERecoveryTimeout;
 #endif
+Mutex mSPIDwpSyncMutex;
 static SyncEvent sNfaVSCResponseEvent;
 // static bool sRfEnabled;           /*commented to eliminate warning defined
 // but not used*/
@@ -78,13 +80,20 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection(JNIEnv*,
   p61_access_state_t p61_current_state = P61_STATE_INVALID;
   se_apdu_gate_info gateInfo = NO_APDU_GATE;
   SecureElement& se = SecureElement::getInstance();
+  android::mSPIDwpSyncMutex.lock();
 #if (NXP_EXTNS == TRUE)
-  if (nfcFL.nfcNxpEse) {
-    if (!nfcFL.eseFL._ESE_WIRED_MODE_PRIO && se.isBusy()) {
-      goto TheEnd;
-    }
-    se.mIsExclusiveWiredMode = false;  // to ctlr exclusive wired mode
+  if ((!nfcFL.nfcNxpEse) ||
+      (!nfcFL.eseFL._ESE_WIRED_MODE_PRIO && se.isBusy())) {
+    goto TheEnd;
   }
+
+  ret_val = NFC_GetP61Status((void*)&p61_current_state);
+  if (ret_val < 0) {
+    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("NFC_GetP61Status failed");
+    goto TheEnd;
+  }
+  DLOG_IF(INFO, nfc_debug_enabled)
+      << StringPrintf("%s P61 Status is: %x", __func__, p61_current_state);
 
   if (((nfcFL.eseFL._NXP_ESE_VER == JCOP_VER_3_1) &&
           (!(p61_current_state & P61_STATE_SPI) &&
@@ -168,8 +177,9 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection(JNIEnv*,
       }
       se.meseUiccConcurrentAccess = true;
     }
-
-    if (nfcFL.eseFL._WIRED_MODE_STANDBY && (se.mNfccPowerMode == 1)) {
+    /*Do not send PowerLink and ModeSet If SPI is already open*/
+    if ((nfcFL.eseFL._WIRED_MODE_STANDBY && (se.mNfccPowerMode == 1)) &&
+        !(p61_current_state & (P61_STATE_SPI | P61_STATE_SPI_PRIO))) {
       status = se.setNfccPwrConfig(se.POWER_ALWAYS_ON | se.COMM_LINK_ACTIVE);
       if (status != NFA_STATUS_OK) {
         DLOG_IF(INFO, nfc_debug_enabled)
@@ -233,6 +243,7 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection(JNIEnv*,
 TheEnd:
   DLOG_IF(INFO, nfc_debug_enabled)
       << StringPrintf("%s: exit; return handle=0x%X", __func__, secElemHandle);
+  android::mSPIDwpSyncMutex.unlock();
   return secElemHandle;
 }  // namespace android
 
@@ -253,9 +264,26 @@ static jboolean nativeNfcSecureElement_doDisconnectSecureElementConnection(
   DLOG_IF(INFO, nfc_debug_enabled)
       << StringPrintf("%s: enter; handle=0x%04x", __func__, handle);
   bool stat = false;
-#if (NXP_EXTNS == TRUE)
   long ret_val = -1;
-  NFCSTATUS status = NFCSTATUS_FAILED;
+  p61_access_state_t p61_current_state = P61_STATE_INVALID;
+  android::mSPIDwpSyncMutex.lock();
+  ret_val = NFC_GetP61Status((void*)&p61_current_state);
+  if (ret_val < 0) {
+    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("NFC_GetP61Status failed");
+  }
+  DLOG_IF(INFO, nfc_debug_enabled)
+      << StringPrintf("%s P61 Status is: %x", __func__, p61_current_state);
+  if (p61_current_state & (P61_STATE_SPI) ||
+      (p61_current_state & (P61_STATE_SPI_PRIO))) {
+    dual_mode_current_state |= SPI_ON;
+  }
+  if ((p61_current_state & (P61_STATE_WIRED)) &&
+      (p61_current_state & (P61_STATE_SPI | P61_STATE_SPI_PRIO))) {
+    dual_mode_current_state |= SPI_DWPCL_BOTH_ACTIVE;
+  }
+
+#if (NXP_EXTNS == TRUE)
+    NFCSTATUS status = NFCSTATUS_FAILED;
 
   SecureElement& se = SecureElement::getInstance();
   se.NfccStandByOperation(STANDBY_TIMER_STOP);
@@ -343,7 +371,7 @@ TheEnd:
 #else
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: exit", __func__);
 #endif
-
+  android::mSPIDwpSyncMutex.unlock();
   return stat ? JNI_TRUE : JNI_FALSE;
 }
 #if (NXP_EXTNS == TRUE)
@@ -455,7 +483,8 @@ __attribute__((unused)) static jboolean nativeNfcSecureElement_doeSEChipResetSec
 #if (NXP_EXTNS == TRUE)
   SecureElement& se = SecureElement::getInstance();
   if (nfcFL.nfcNxpEse) {
-    if (GetNxpNumValue("NXP_ESE_POWER_DH_CONTROL", &num, sizeof(num))) {
+    if (NfcConfig::hasKey("NXP_ESE_POWER_DH_CONTROL")) {
+      num = NfcConfig::getUnsigned("NXP_ESE_POWER_DH_CONTROL");
       DLOG_IF(INFO, nfc_debug_enabled)
           << StringPrintf("Power schemes enabled in config file is %ld", num);
     }

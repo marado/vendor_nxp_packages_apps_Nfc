@@ -37,6 +37,7 @@
 #include "nfa_api.h"
 #include "nfc_api.h"
 #include "phNxpConfig.h"
+#include "nfc_config.h"
 
 using android::base::StringPrintf;
 
@@ -256,23 +257,26 @@ bool RoutingManager::initialize(nfc_jni_native_data* native) {
       mDefaultTechFSeID = getUiccRoute(sCurrentSelectedUICCSlot);
     }
 
-    if (GetNxpNumValue(NAME_DEFAULT_FELICA_CLT_PWR_STATE, (void*)&num,
-                       sizeof(num)))
+    if (NfcConfig::hasKey(NAME_DEFAULT_FELICA_CLT_PWR_STATE)) {
+      num = NfcConfig::getUnsigned(NAME_DEFAULT_FELICA_CLT_PWR_STATE);
       mDefaultTechFPowerstate = num;
-    else
+    } else {
       mDefaultTechFPowerstate = 0x3F;
+    }
   } else {
     mDefaultTechFSeID = SecureElement::getInstance().EE_HANDLE_0xF4;
     mDefaultTechFPowerstate = 0x3F;
   }
-  if (GetNxpNumValue(NAME_NXP_HCEF_CMD_RSP_TIMEOUT_VALUE, (void*)&num,
-                     sizeof(num))) {
+
+  if (NfcConfig::hasKey(NAME_NXP_HCEF_CMD_RSP_TIMEOUT_VALUE)) {
+    num = NfcConfig::getUnsigned(NAME_NXP_HCEF_CMD_RSP_TIMEOUT_VALUE);
     if (num > 0) {
       mDefaultHCEFRspTimeout = num;
     }
   }
 #endif
-  if ((GetNxpNumValue(NAME_NXP_NFC_CHIP, &num, sizeof(num)))) {
+  if (NfcConfig::hasKey(NAME_NXP_NFC_CHIP)) {
+    num = NfcConfig::getUnsigned(NAME_NXP_NFC_CHIP);
     mChipId = num;
   }
 
@@ -2131,14 +2135,15 @@ void RoutingManager::nfaEeCallback(tNFA_EE_EVT event,
       }
     } break;
 
-    case NFA_EE_DISCOVER_REQ_EVT:
-      info = eventData->discover_req;
+    case NFA_EE_DISCOVER_REQ_EVT: {
+      tNFA_EE_DISCOVER_REQ info = eventData->discover_req;
       DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
           "%s: NFA_EE_DISCOVER_REQ_EVT; status=0x%X; num ee=%u", __func__,
           eventData->discover_req.status, eventData->discover_req.num_ee);
       if (nfcFL.nfcNxpEse && nfcFL.eseFL._ESE_ETSI_READER_ENABLE) {
         MposManager::getInstance().hanldeEtsiReaderReqEvent(&info);
       }
+    }
       break;
 
     case NFA_EE_NO_CB_ERR_EVT:
