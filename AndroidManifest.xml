@@ -160,10 +160,8 @@
         />
 
         <service android:name=".beam.BeamSendService"
-            android:process=":beam"
         />
         <service android:name=".beam.BeamReceiveService"
-            android:process=":beam"
         />
 
         <receiver android:name=".NfcBootCompletedReceiver">
