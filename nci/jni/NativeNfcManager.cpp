@@ -2244,7 +2244,9 @@ static void nfcManager_setEmptyAidRoute (JNIEnv*, jobject, jint route)
    {
     unsigned long num = 0;
 
-    GetNxpNumValue(NAME_DEFAULT_FELICA_CLT_PWR_STATE, &num, sizeof(num));
+    if (NfcConfig::hasKey(NAME_DEFAULT_FELICA_CLT_PWR_STATE)) {
+            num = NfcConfig::getUnsigned(NAME_DEFAULT_FELICA_CLT_PWR_STATE);
+    }
     return num;
    }
 
@@ -2266,9 +2268,10 @@ static void nfcManager_setEmptyAidRoute (JNIEnv*, jobject, jint route)
   {
     unsigned long num = 0;
 
-    GetNxpNumValue(NAME_DEFAULT_FELICA_CLT_ROUTE, &num, sizeof(num));
-
-    return num;
+    if (NfcConfig::hasKey(NAME_DEFAULT_FELICA_CLT_ROUTE)) {
+            num = NfcConfig::getUnsigned(NAME_DEFAULT_FELICA_CLT_ROUTE);
+    }
+   return num;
   }
   /*******************************************************************************
   **
@@ -5135,17 +5138,16 @@ static void restartUiccListen(jint uiccSlot) {
    __attribute__((unused)) static jbyteArray nfcManager_getFwFileName(JNIEnv * e, jobject o) {
     (void)o;
     DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: enter", __func__);
-    char fwFileName[256];
+    std::string fwFileName;
     int fileLen = 0;
     jbyteArray jbuff = NULL;
-
-    if (GetNxpStrValue(NAME_NXP_FW_NAME, (char*)fwFileName,
-                       sizeof(fwFileName)) == true) {
-      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
-          "%s: FW_NAME read success = %s", __func__, fwFileName);
-      fileLen = strlen(fwFileName);
+    if (NfcConfig::hasKey(NAME_NXP_FW_NAME)) {
+	fwFileName = NfcConfig::getString(NAME_NXP_FW_NAME);
+    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+          "%s: FW_NAME read success = %s", __func__, fwFileName.c_str());
+      fileLen = strlen(fwFileName.c_str());
       jbuff = e->NewByteArray(fileLen);
-      e->SetByteArrayRegion(jbuff, 0, fileLen, (jbyte*)fwFileName);
+      e->SetByteArrayRegion(jbuff, 0, fileLen, (jbyte*)(fwFileName.c_str()));
     } else {
       DLOG_IF(INFO, nfc_debug_enabled)
           << StringPrintf("%s: FW_NAME not found", __func__);
