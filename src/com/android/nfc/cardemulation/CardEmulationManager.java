@@ -44,13 +44,15 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
+import java.util.Map;
+import java.util.HashMap;
 
 import com.android.nfc.NfcPermissions;
 import com.android.nfc.NfcService;
 import com.android.nfc.cardemulation.RegisteredServicesCache;
 import com.android.nfc.cardemulation.RegisteredNfcFServicesCache;
 import com.gsma.nfc.internal.RegisteredNfcServicesCache;
-
+import com.nxp.nfc.NfcAidServiceInfo;
 /**
  * CardEmulationManager is the central entity
  * responsible for delegating to individual components
@@ -455,6 +457,28 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         public boolean supportsAidPrefixRegistration() throws RemoteException {
             return mAidCache.supportsAidPrefixRegistration();
         }
+
+        @Override
+        public boolean setOffHostForService(int userId, ComponentName service, String offHostSE) {
+            NfcPermissions.validateUserId(userId);
+            NfcPermissions.enforceUserPermissions(mContext);
+            if (!isServiceRegistered(userId, service)) {
+                return false;
+            }
+            //TODO Implementation need to be done. Returning true as a temporary fix.
+            return true;
+        }
+
+        @Override
+        public boolean unsetOffHostForService(int userId, ComponentName service) {
+            NfcPermissions.validateUserId(userId);
+            NfcPermissions.enforceUserPermissions(mContext);
+            if (!isServiceRegistered(userId, service)) {
+                return false;
+            }
+            //TODO Implementation need to be done. Returning true as a temporary fix.
+            return true;
+        }
     }
 
     /**
@@ -567,6 +591,46 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
     public void onPreferredForegroundServiceChanged(ComponentName service) {
         mAidCache.onPreferredForegroundServiceChanged(service);
         mHostEmulationManager.onPreferredForegroundServiceChanged(service);
+    }
+
+    public List<NfcAidServiceInfo> getServicesAidInfo(int userId, String category) {
+        if(category == CardEmulation.CATEGORY_PAYMENT) {
+            return null;
+        }
+        List<NfcApduServiceInfo> nonPaymentServices = new ArrayList<NfcApduServiceInfo>();
+        List<NfcAidServiceInfo> nfcAidServiceInfoList = new ArrayList<NfcAidServiceInfo>();
+        Integer serviceAidCacheSize = 0x00;
+        String serviceComponent = null;
+        NfcPermissions.validateUserId(userId);
+        NfcPermissions.enforceUserPermissions(mContext);
+        nonPaymentServices = mServiceCache.getServicesForCategory(userId, CardEmulation.CATEGORY_OTHER);
+        for(NfcApduServiceInfo serviceinfo : nonPaymentServices) {
+            serviceAidCacheSize = 0x00;
+            serviceComponent = null;
+            if(serviceinfo != null) {
+                for(String aid : serviceinfo.getAids()) {
+                    if(aid.endsWith("*")) {
+                        serviceAidCacheSize += (aid.length() - 0x01)/2 + 4;
+                    } else {
+                        serviceAidCacheSize += aid.length()/2 + 4;
+                    }
+                }
+                serviceComponent = serviceinfo.getComponent().flattenToString();
+                NfcAidServiceInfo aidServiceInfo = new NfcAidServiceInfo(serviceComponent, serviceAidCacheSize,
+                    serviceinfo.isServiceEnabled(CardEmulation.CATEGORY_OTHER),
+                    serviceinfo.getDescription(),serviceinfo.getOtherAidGroupDescription());
+                nfcAidServiceInfoList.add(aidServiceInfo);
+            }
+        }
+
+
+        return nfcAidServiceInfoList;
+    }
+
+    public int updateServiceState(int userId , Map<String , Boolean> serviceState) {
+        NfcPermissions.validateUserId(userId);
+        NfcPermissions.enforceUserPermissions(mContext);
+        return mServiceCache.updateServiceState(userId ,Binder.getCallingUid() ,serviceState);
     }
 
     @Override

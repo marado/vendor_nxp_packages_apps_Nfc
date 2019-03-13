@@ -636,6 +636,7 @@ bool CNxpNfcConfig::readConfig(const char* name, bool bResetContent) {
           break;
         }
       // fall through to numValue to handle numValue
+      [[fallthrough]];
 
       case NUM_VALUE:
         if (isDigit(c, base)) {

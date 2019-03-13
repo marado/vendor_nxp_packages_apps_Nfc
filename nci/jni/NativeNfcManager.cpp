@@ -2092,25 +2092,26 @@ static jboolean nfcManager_setRoutingEntry (JNIEnv*, jobject, jint type, jint va
     result = RoutingManager::getInstance().setRoutingEntry(type, value, route, power);
     gsRouteUpdated = true;
     return result;
-  }
-  /*******************************************************************************
-  **
-  ** Function:        nfcManager_clearRoutingEntry
-  **
-  ** Description:     Set the routing entry in routing table
-  **                  e: JVM environment.
-  **                  o: Java object.
-  **                  type:technology/protocol/aid clear routing
-  **
-  *******************************************************************************/
+}
+
+/*******************************************************************************
+**
+** Function:        nfcManager_clearRoutingEntry
+**
+** Description:     Set the routing entry in routing table
+**                  e: JVM environment.
+**                  o: Java object.
+**                  type:technology/protocol/aid clear routing
+**
+*******************************************************************************/
 
 static jboolean nfcManager_clearRoutingEntry (JNIEnv*, jobject, jint type)
 {
     jboolean result = false;
-
+    //checkRecreatePipe(); TODO
     result = RoutingManager::getInstance().clearRoutingEntry(type);
     return result;
-  }
+}
 
 /*******************************************************************************
 **
@@ -4782,7 +4783,6 @@ static void restartUiccListen(jint uiccSlot) {
 
     {"setTransitConfig", "(Ljava/lang/String;)I",
      (void*)nfcManager_setTransitConfig},
-
 #endif
 
     {"doGetActiveSecureElementList", "()[I",
