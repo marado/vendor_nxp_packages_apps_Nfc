@@ -8363,13 +8363,13 @@ __attribute__((unused)) static jint nfcManager_SWPSelfTest(JNIEnv * e, jobject o
       switch (rqst) {
       case RDR_PASS_THRU_MODE_ENABLE:
         state = BUSY;
-        return new cmdEnablePassThru(modulationType, RDR_PASS_THRU_ENABLE_TIMEOUT, 3);
+        return NULL;
       case RDR_PASS_THRU_MODE_DISABLE:
         state = BUSY;
-        return new cmdDisablePassThru(RDR_PASS_THRU_DISABLE_TIMEOUT, 3);
+        return NULL;
       case RDR_PASS_THRU_MODE_XCV:
         state = BUSY;
-        return new cmdTransceive(RDR_PASS_THRU_DISABLE_TIMEOUT, 0);
+        return NULL;
       default:
         return NULL;
       }
