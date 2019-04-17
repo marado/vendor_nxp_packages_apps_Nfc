@@ -825,16 +825,6 @@ public class NfcService implements DeviceHostListener {
         UserManager um = (UserManager) context.getSystemService(Context.USER_SERVICE);
         IPackageManager mIpm = IPackageManager.Stub.asInterface(ServiceManager.getService("package"));
         boolean isGlobalEnabled = mIsNdefPushEnabled;
-        if (uh.getIdentifier() != mUserId) {
-            try {
-            int userSetting = mIpm.getComponentEnabledSetting(new ComponentName(
-                    BeamShareActivity.class.getPackageName$(),
-                    BeamShareActivity.class.getName()), uh.getIdentifier());
-            isGlobalEnabled = (userSetting == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) ? false : true;
-            } catch (RemoteException e) {
-                Log.w(TAG, "Unable to get Beam status for user " + uh);
-            }
-        }
         boolean isActiveForUser =
             (!um.hasUserRestriction(UserManager.DISALLOW_OUTGOING_BEAM, uh)) &&
             isGlobalEnabled && mIsBeamCapable;
@@ -938,6 +928,12 @@ public class NfcService implements DeviceHostListener {
                 mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, true);
                 mPrefsEditor.apply();
                 mIsNdefPushEnabled = true;
+                // Propagate the state change to all user profiles
+                UserManager um = (UserManager) mContext.getSystemService(Context.USER_SERVICE);
+                List <UserHandle> luh = um.getUserProfiles();
+                for (UserHandle uh : luh){
+                    enforceBeamShareActivityPolicy(mContext, uh);
+                }
                 enforceBeamShareActivityPolicy(mContext, new UserHandle(mUserId));
                 if (isNfcEnabled()) {
                     mP2pLinkManager.enableDisable(true, true);
@@ -982,6 +978,12 @@ public class NfcService implements DeviceHostListener {
                 mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, false);
                 mPrefsEditor.apply();
                 mIsNdefPushEnabled = false;
+                // Propagate the state change to all user profiles
+                UserManager um = (UserManager) mContext.getSystemService(Context.USER_SERVICE);
+                List <UserHandle> luh = um.getUserProfiles();
+                for (UserHandle uh : luh){
+                    enforceBeamShareActivityPolicy(mContext, uh);
+                }
                 enforceBeamShareActivityPolicy(mContext, new UserHandle(mUserId));
                 if (isNfcEnabled()) {
                     mP2pLinkManager.enableDisable(false, true);
@@ -2544,7 +2546,7 @@ public class NfcService implements DeviceHostListener {
                 }
             }
             int dispatchResult = mNfcDispatcher.dispatchTag(tag);
-            if (dispatchResult == NfcDispatcher.DISPATCH_FAIL) {
+            if (dispatchResult == NfcDispatcher.DISPATCH_FAIL && !mInProvisionMode) {
                 unregisterObject(tagEndpoint.getHandle());
                 if (mScreenState == ScreenStateHelper.SCREEN_STATE_ON_UNLOCKED) {
                     Toast.makeText(mContext,
@@ -2629,6 +2631,13 @@ public class NfcService implements DeviceHostListener {
                         } else {
                            mIsNdefPushEnabled = true;
                         }
+                        // Propagate the state change to all user profiles
+                        UserManager um = (UserManager) mContext.getSystemService(Context.USER_SERVICE);
+                        List <UserHandle> luh = um.getUserProfiles();
+                        for (UserHandle uh : luh){
+                            enforceBeamShareActivityPolicy(mContext, uh);
+                        }
+                        enforceBeamShareActivityPolicy(mContext, new UserHandle(mUserId));
                     }
                     mP2pLinkManager.onUserSwitched(getUserId());
                 }
@@ -2667,8 +2676,7 @@ public class NfcService implements DeviceHostListener {
         public void onReceive(Context context, Intent intent){
             String action = intent.getAction();
             if (DevicePolicyManager.ACTION_DEVICE_POLICY_MANAGER_STATE_CHANGED
-                        .equals(action) &&
-                    mIsBeamCapable) {
+                        .equals(action)) {
                 enforceBeamShareActivityPolicy(
                     context, new UserHandle(getSendingUserId()));
             }
