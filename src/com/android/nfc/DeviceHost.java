@@ -44,6 +44,8 @@ public interface DeviceHost {
     public interface DeviceHostListener {
         public void onRemoteEndpointDiscovered(TagEndpoint tag);
 
+        /**
+         */
         public void onHostCardEmulationActivated(int technology);
         public void onHostCardEmulationData(int technology, byte[] data);
         public void onHostCardEmulationDeactivated(int technology);
@@ -314,6 +316,8 @@ public interface DeviceHost {
 
     public void doSetScreenState(int screen_state_mask);
 
+    public void doResonantFrequency(boolean isResonantFreq);
+
     void setEtsiReaederState(int newState);
 
     int getEtsiReaederState();
@@ -348,7 +352,7 @@ public interface DeviceHost {
 
 /* NXP extension are here */
     public void doChangeDiscoveryTech(int pollTech, int listenTech);
-    public int accessControlForCOSU (int mode);
+    public boolean accessControlForCOSU (int mode);
 
     public int getFWVersion();
     public byte[] readerPassThruMode(byte status, byte modulationTyp);
