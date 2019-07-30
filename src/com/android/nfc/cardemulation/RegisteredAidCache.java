@@ -2,7 +2,7 @@
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright (C) 2018 NXP Semiconductors
+ * Copyright (C) 2018-2019 NXP Semiconductors
  * The original Work has been changed by NXP Semiconductors.
  * Copyright (C) 2014 The Android Open Source Project
  *
@@ -18,7 +18,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.android.nfc.cardemulation;
 
 import android.app.ActivityManager;
@@ -44,14 +43,14 @@ import java.util.TreeMap;
 import android.nfc.cardemulation.NfcAidGroup;
 import com.android.nfc.NfcService;
 import com.nxp.nfc.NfcConstants;
+import android.os.SystemProperties;
 public class RegisteredAidCache {
     static final String TAG = "RegisteredAidCache";
 
-    static final boolean DBG = true;
+    static final boolean DBG = ((SystemProperties.get("persist.nfc.ce_debug").equals("1")) ? true : false);
 
     static final int AID_ROUTE_QUAL_SUBSET = 0x20;
     static final int AID_ROUTE_QUAL_PREFIX = 0x10;
-
     // mAidServices maps AIDs to services that have registered them.
     // It's a TreeMap in order to be able to quickly select subsets
     // of AIDs that conflict with each other.
@@ -64,7 +63,6 @@ public class RegisteredAidCache {
     // is authoritative for the current set of services and defaults.
     // It is only valid for the current user.
     final TreeMap<String, AidResolveInfo> mAidCache = new TreeMap<String, AidResolveInfo>();
-    final TreeMap<String, ServiceApduInfo> mapduPatternList= new TreeMap<String, ServiceApduInfo>();
     //FIXME: directly use the declaration in ApduServerInfo in framework
     static final int POWER_STATE_SWITCH_ON = 1;
     static final int POWER_STATE_SWITCH_OFF = 2;
@@ -111,10 +109,6 @@ public class RegisteredAidCache {
         }
     }
 
-    final class ServiceApduInfo {
-        NfcApduServiceInfo service;
-        NfcAidGroup.ApduPattern apdu;
-    }
     // Represents a list of services, an optional default and a category that
     // an AID was resolved to.
     final class AidResolveInfo {
@@ -143,7 +137,6 @@ public class RegisteredAidCache {
 
     ComponentName mPreferredPaymentService;
     ComponentName mPreferredForegroundService;
-    ComponentName mPreviousPreferredPaymentService;
     boolean mNfcEnabled = false;
     boolean mSupportsPrefixes = false;
     boolean mSupportsSubset = false;
@@ -217,9 +210,7 @@ public class RegisteredAidCache {
             return resolveInfo;
         }
     }
-    public void setPreviousPreferredPaymentService(ComponentName mPrevPaymentService) {
-        mPreviousPreferredPaymentService = mPrevPaymentService;
-    }
+
     public ComponentName getPreferredPaymentService(){
         return mPreferredPaymentService;
     }
@@ -421,7 +412,6 @@ public class RegisteredAidCache {
     void generateServiceMapLocked(List<NfcApduServiceInfo> services) {
         // Easiest is to just build the entire tree again
         mAidServices.clear();
-        mapduPatternList.clear();
         for (NfcApduServiceInfo service : services) {
             if (DBG) Log.d(TAG, "generateServiceMap component: " + service.getComponent());
             List<String> prefixAids = service.getPrefixAids();
@@ -491,21 +481,6 @@ public class RegisteredAidCache {
                             new ArrayList<ServiceAidInfo>();
                     serviceAidInfos.add(serviceAidInfo);
                     mAidServices.put(serviceAidInfo.aid, serviceAidInfos);
-                }
-            }
-            for(NfcAidGroup group : service.getNfcAidGroups()) {
-                ArrayList<NfcAidGroup.ApduPattern> apduPattern = group.getApduPatternList();
-                if(apduPattern == null || apduPattern.size() == 0x00)
-                    continue;
-                for(NfcAidGroup.ApduPattern apdu : apduPattern) {
-                    ServiceApduInfo serviceApduInfo = new ServiceApduInfo();
-                    serviceApduInfo.apdu = apdu;
-                    serviceApduInfo.service = service;
-                    if (mapduPatternList.containsKey(apdu.getreferenceData())) {
-                        Log.e(TAG," Ignoring APDU pattern which is already registered");
-                    } else {
-                        mapduPatternList.put(apdu.getreferenceData(), serviceApduInfo);
-                    }
                 }
             }
         }
@@ -823,15 +798,16 @@ public class RegisteredAidCache {
             resolvedAids.clear();
         }
 
-        updateRoutingLocked();
+        updateRoutingLocked(false);
     }
 
-    void updateRoutingLocked() {
+    void updateRoutingLocked(boolean force) {
         if (!mNfcEnabled) {
             if (DBG) Log.d(TAG, "Not updating routing table because NFC is off.");
             return;
         }
         final HashMap<String, AidRoutingManager.AidEntry> routingEntries = Maps.newHashMap();
+        int mGsmaPwrState = NfcService.getInstance().getGsmaPwrState();
         // For each AID, find interested services
         for (Map.Entry<String, AidResolveInfo> aidEntry:
                 mAidCache.entrySet()) {
@@ -856,20 +832,39 @@ public class RegisteredAidCache {
                 // either on the host (HCE) or on an SE.
                 NfcApduServiceInfo.ESeInfo seInfo = resolveInfo.defaultService.getSEInfo();
                 aidType.isOnHost = resolveInfo.defaultService.isOnHost();
+                if (!aidType.isOnHost) {
+                    aidType.offHostSE =
+                            resolveInfo.defaultService.getOffHostSecureElement();
+                }
                 int powerstate = seInfo.getPowerState() & POWER_STATE_ALL;
-                if(powerstate == 0x00)
-                    powerstate =  POWER_STATE_SWITCH_ON;
                 int screenstate= 0;
+                if(powerstate == 0x00) {
+                    powerstate = (NfcService.getInstance().GetDefaultMifateCLTRouteEntry() & 0x3F);
+                    if(mGsmaPwrState > 0)
+                    {
+                        if(aidType.isOnHost)
+                        {
+                            powerstate = (mGsmaPwrState & 0x39);
+                        } else
+                        {
+                            powerstate = mGsmaPwrState;
+                        }
+                        Log.d(TAG," Setting GSMA power state"+ aid  + powerstate);
+                    }
+                }
+
                 boolean isOnHost = resolveInfo.defaultService.isOnHost();
                 if ((powerstate & POWER_STATE_SWITCH_ON) == POWER_STATE_SWITCH_ON )
                 {
                   screenstate |= SCREEN_STATE_ON_LOCKED;
                   if (!isOnHost) {
-                    Log.d(TAG," set screen off enable for " + aid);
+                    if (DBG) Log.d(TAG," set screen off enable for " + aid);
                     screenstate |= SCREEN_STATE_OFF_UNLOCKED | SCREEN_STATE_OFF_LOCKED;
                   }
+                  if(mGsmaPwrState == 0x00)
+                    powerstate |= screenstate;
                 }
-                powerstate |= screenstate;
+
                int route = isOnHost ? 0 : seInfo.getSeId();
                Log.d(TAG," AID power state"+ aid  + powerstate  +"route"+route);
                aidType.route = route;
@@ -879,37 +874,49 @@ public class RegisteredAidCache {
                 // Only one service, but not the default, must route to host
                 // to ask the user to choose one.
                 aidType.isOnHost = true;
-                aidType.powerstate = POWER_STATE_SWITCH_ON|SCREEN_STATE_ON_LOCKED;
-                               Log.d(TAG," AID power state 2"+ aid  + aidType.powerstate);
+                aidType.powerstate = POWER_STATE_SWITCH_ON | SCREEN_STATE_ON_LOCKED;
+                Log.d(TAG," AID power state 2"+ aid  +" "+aidType.powerstate);
+                if(mGsmaPwrState > 0)
+                {
+                    aidType.powerstate = (mGsmaPwrState & 0x39);
+                    Log.d(TAG," Setting GSMA power state"+ aid  + " " +aidType.powerstate);
+                }
                 routingEntries.put(aid, aidType);
             } else if (resolveInfo.services.size() > 1) {
-                // Multiple services, need to route to host to ask
-                aidType.isOnHost = true;
-                aidType.powerstate = POWER_STATE_SWITCH_ON|SCREEN_STATE_ON_LOCKED;
+                // Multiple services if all the services are routing to same
+                // offhost then the service should be routed to off host.
+                boolean onHost = false;
+                String offHostSE = null;
+                for (NfcApduServiceInfo service : resolveInfo.services) {
+                    // In case there is at least one service which routes to host
+                    // Route it to host for user to select which service to use
+                    onHost |= service.isOnHost();
+                    if (!onHost) {
+                        if (offHostSE == null) {
+                            offHostSE = service.getOffHostSecureElement();
+                        } else if (!offHostSE.equals(
+                                service.getOffHostSecureElement())) {
+                            // There are registerations to different SEs, route this
+                            // to host and have user choose a service for this AID
+                            offHostSE = null;
+                            onHost = true;
+                            break;
+                        }
+                    }
+                }
+                aidType.isOnHost = onHost;
+                aidType.offHostSE = onHost ? null : offHostSE;
+                aidType.powerstate = POWER_STATE_SWITCH_ON | SCREEN_STATE_ON_LOCKED;
+                if(mGsmaPwrState > 0)
+                {
+                    aidType.powerstate = (mGsmaPwrState & 0x39);
+                    Log.d(TAG," Setting GSMA power state"+ aid  + " " +aidType.powerstate);
+                }
                 Log.d(TAG," AID power state 3"+ aid  + aidType.powerstate);
                 routingEntries.put(aid, aidType);
             }
         }
-        addApduPatternEntries();
-        mRoutingManager.configureRouting(routingEntries);
-    }
-
-    public void addApduPatternEntries() {
-        List<AidRoutingManager.ApduPatternResolveInfo> apduPatternRouting = new ArrayList<AidRoutingManager.ApduPatternResolveInfo>();
-        for(Map.Entry<String , ServiceApduInfo> entry : mapduPatternList.entrySet()) {
-            AidRoutingManager.ApduPatternResolveInfo apduEntry = mRoutingManager.new ApduPatternResolveInfo();
-            NfcApduServiceInfo service = entry.getValue().service;
-            NfcApduServiceInfo.ESeInfo seInfo = service.getSEInfo();
-
-            apduEntry.referenceData = entry.getValue().apdu.getreferenceData();
-            apduEntry.mask = entry.getValue().apdu.getMask();
-            apduEntry.route = seInfo.getSeId();
-            apduEntry.powerState =  seInfo.getPowerState() & POWER_STATE_ALL;
-            apduEntry.powerState |= SCREEN_STATE_ON_LOCKED | SCREEN_STATE_OFF_UNLOCKED | SCREEN_STATE_OFF_LOCKED;
-
-            apduPatternRouting.add(apduEntry);
-        }
-        mRoutingManager.configureApduPatternRouting(apduPatternRouting);
+        mRoutingManager.configureRouting(routingEntries, force);
     }
 
     public void onServicesUpdated(int userId, List<NfcApduServiceInfo> services) {
@@ -929,19 +936,24 @@ public class RegisteredAidCache {
         if (DBG) Log.d(TAG, "Preferred payment service changed.");
        synchronized (mLock) {
            mPreferredPaymentService = service;
-           mPreviousPreferredPaymentService = mPreferredPaymentService;
            generateAidCacheLocked();
        }
     }
-     public ComponentName getPreviousPreferredPaymentService() {
-        return mPreviousPreferredPaymentService;
-       }
+
     public void onPreferredForegroundServiceChanged(ComponentName service) {
         if (DBG) Log.d(TAG, "Preferred foreground service changed.");
         synchronized (mLock) {
             mPreferredForegroundService = service;
             generateAidCacheLocked();
         }
+    }
+
+    public void onRoutingTableChanged() {
+      if (DBG)
+        Log.d(TAG, "onRoutingTableChanged");
+      synchronized (mLock) {
+        generateAidCacheLocked();
+      }
     }
 
     public void onNfcDisabled() {
@@ -954,7 +966,13 @@ public class RegisteredAidCache {
     public void onNfcEnabled() {
         synchronized (mLock) {
             mNfcEnabled = true;
-            updateRoutingLocked();
+            updateRoutingLocked(false);
+        }
+    }
+
+    public void onSecureNfcToggled() {
+        synchronized (mLock) {
+            updateRoutingLocked(true);
         }
     }
 

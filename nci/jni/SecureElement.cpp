@@ -3,7 +3,7 @@
  *  Copyright (c) 2016, The Linux Foundation. All rights reserved.
  *  Not a Contribution.
  *
- *  Copyright (C) 2015-2018 NXP Semiconductors
+ *  Copyright (C) 2015-2019 NXP Semiconductors
  *  The original Work has been changed by NXP Semiconductors.
  *
  *  Copyright (C) 2012 The Android Open Source Project
@@ -157,14 +157,31 @@ const uint16_t ACTIVE_SE_USE_ANY = 0xFFFF;
 SecureElement::SecureElement()
     : mActiveEeHandle(NFA_HANDLE_INVALID),
 #if (NXP_EXTNS == TRUE)
+      mHostsPresent(0),
       mETSI12InitStatus(NFA_STATUS_FAILED),
+      eSE_Compliancy(0),
+      mCreatedPipe(0),
+      mDeletePipeHostId(0),
       mWmMaxWtxCount(0),
       meseETSI12Recovery(false),
+      mAbortEventWaitOk(false),
+      mNfaHciHandle(NFA_HANDLE_INVALID),
+      pipeStatus(0),
+      IsCmdsentOnOpenDwpSession(false),
+      EE_HANDLE_0xF4(0),
+      mPassiveListenEnabled(false),
+      meseUiccConcurrentAccess(false),
       mPassiveListenTimeout(0),
       mPassiveListenCnt(0),
+#endif
+      mDownloadMode(0),
+#if (NXP_EXTNS == TRUE)
       meSESessionIdOk(false),
       mIsWiredModeOpen(false),
+      mlistenDisabled(false),
+      mIsExclusiveWiredMode(false),
       mIsAllowWiredInDesfireMifareCE(false),
+      mIsWiredModeBlocked(false),
       mRfFieldEventTimeout(0),
       mModeSetInfo(NFA_STATUS_FAILED),
       mPwrCmdstatus(NFA_STATUS_FAILED),
@@ -175,7 +192,6 @@ SecureElement::SecureElement()
       mNativeData(NULL),
       mIsInit(false),
       mActualNumEe(0),
-      mNumEePresent(0),
       mbNewEE(true),  // by default we start w/thinking there are new EE
       mNewPipeId(0),
       mNewSourceGate(0),
@@ -185,6 +201,7 @@ SecureElement::SecureElement()
       mCurrentRouteSelection(NoRoute),
       mActualResponseSize(0),
       mAtrInfolen(0),
+      mAtrStatus(0),
       mUseOberthurWarmReset(false),
       mActivatedInListenMode(false),
       mOberthurWarmResetCommand(3),
@@ -301,7 +318,7 @@ bool SecureElement::initialize(nfc_jni_native_data* native) {
       spiDwpSyncState = STATE_IDLE;
     }
 
-    if (NfcConfig::hasKey(NAME_NXP_WM_MAX_WTX_COUNT) && (mWmMaxWtxCount != 0)) {
+    if (NfcConfig::hasKey(NAME_NXP_WM_MAX_WTX_COUNT)) {
       mWmMaxWtxCount = NfcConfig::getUnsigned(NAME_NXP_WM_MAX_WTX_COUNT);
     } else
       mWmMaxWtxCount = 9000;
@@ -527,7 +544,6 @@ void SecureElement::finalize() {
   mNativeData = NULL;
   mIsInit = false;
   mActualNumEe = 0;
-  mNumEePresent = 0;
   mNewPipeId = 0;
   mNewSourceGate = 0;
   mIsPiping = false;
@@ -556,7 +572,7 @@ bool SecureElement::getEeInfo() {
 /*Reading latest eEinfo  incase it is updated*/
 #if (NXP_EXTNS == TRUE)
   mbNewEE = true;
-  mNumEePresent = 0;
+  uint8_t eeIndex = 0;
 #endif
   // If mbNewEE is true then there is new EE info.
   if (mbNewEE) {
@@ -565,8 +581,9 @@ bool SecureElement::getEeInfo() {
 #endif
 
     mActualNumEe = nfcFL.nfccFL._NFA_EE_MAX_EE_SUPPORTED;
-
-    if ((nfaStat = NFA_EeGetInfo(&mActualNumEe, mEeInfo)) != NFA_STATUS_OK) {
+    tNFA_EE_INFO eeInfo[MAX_NUM_EE];
+    memset(&eeInfo, 0, nfcFL.nfccFL._NFA_EE_MAX_EE_SUPPORTED * sizeof(tNFA_EE_INFO));
+    if ((nfaStat = NFA_EeGetInfo(&mActualNumEe, eeInfo)) != NFA_STATUS_OK) {
       LOG(ERROR) << StringPrintf("%s: fail get info; error=0x%X", fn, nfaStat);
       mActualNumEe = 0;
     } else {
@@ -576,42 +593,42 @@ bool SecureElement::getEeInfo() {
           << StringPrintf("%s: num EEs discovered: %u", fn, mActualNumEe);
       if (mActualNumEe != 0) {
         for (uint8_t xx = 0; xx < mActualNumEe; xx++) {
-          if (mEeInfo[xx].ee_interface[0] != NCI_NFCEE_INTERFACE_HCI_ACCESS)
-            mNumEePresent++;
-
-          DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
-              "%s: EE[%u] Handle: 0x%04x  Status: %s  Num I/f: %u: (0x%02x, "
-              "0x%02x)  Num TLVs: %u, Tech : (LA:0x%02x, LB:0x%02x, "
-              "LF:0x%02x, LBP:0x%02x)",
-              fn, xx, mEeInfo[xx].ee_handle,
-              eeStatusToString(mEeInfo[xx].ee_status),
-              mEeInfo[xx].num_interface, mEeInfo[xx].ee_interface[0],
-              mEeInfo[xx].ee_interface[1], mEeInfo[xx].num_tlvs,
-              mEeInfo[xx].la_protocol, mEeInfo[xx].lb_protocol,
-              mEeInfo[xx].lf_protocol, mEeInfo[xx].lbp_protocol);
-
-#if (NXP_EXTNS == TRUE)
-          mNfceeData_t.mNfceeHandle[xx] = mEeInfo[xx].ee_handle;
-          mNfceeData_t.mNfceeStatus[xx] = mEeInfo[xx].ee_status;
-#endif
-          for (size_t yy = 0; yy < mEeInfo[xx].num_tlvs; yy++) {
+          if (eeInfo[xx].ee_interface[0] != NCI_NFCEE_INTERFACE_HCI_ACCESS) {
+            mEeInfo[eeIndex]=eeInfo[xx];
             DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
-                "%s: EE[%u] TLV[%lu]  Tag: 0x%02x  Len: %u  Values[]: 0x%02x  "
-                "0x%02x  0x%02x ...",
-                fn, xx, yy, mEeInfo[xx].ee_tlv[yy].tag,
-                mEeInfo[xx].ee_tlv[yy].len, mEeInfo[xx].ee_tlv[yy].info[0],
-                mEeInfo[xx].ee_tlv[yy].info[1], mEeInfo[xx].ee_tlv[yy].info[2]);
+                "%s: EE[%u] Handle: 0x%04x  Status: %s  Num I/f: %u: (0x%02x, "
+                "0x%02x)  Num TLVs: %u, Tech : (LA:0x%02x, LB:0x%02x, "
+                "LF:0x%02x, LBP:0x%02x)",
+                fn, eeIndex, mEeInfo[eeIndex].ee_handle,
+                eeStatusToString(mEeInfo[eeIndex].ee_status),
+                mEeInfo[eeIndex].num_interface, mEeInfo[eeIndex].ee_interface[0],
+                mEeInfo[eeIndex].ee_interface[1], mEeInfo[eeIndex].num_tlvs,
+                mEeInfo[eeIndex].la_protocol, mEeInfo[eeIndex].lb_protocol,
+                mEeInfo[eeIndex].lf_protocol, mEeInfo[eeIndex].lbp_protocol);
+#if (NXP_EXTNS == TRUE)
+            mNfceeData_t.mNfceeHandle[eeIndex] = mEeInfo[eeIndex].ee_handle;
+            mNfceeData_t.mNfceeStatus[eeIndex] = mEeInfo[eeIndex].ee_status;
+#endif
+            for (size_t yy = 0; yy < mEeInfo[eeIndex].num_tlvs; yy++) {
+              DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+                  "%s: EE[%u] TLV[%zu]  Tag: 0x%02x  Len: %u  Values[]: 0x%02x  "
+                  "0x%02x  0x%02x ...",
+                  fn, eeIndex, yy, mEeInfo[eeIndex].ee_tlv[yy].tag,
+                  mEeInfo[eeIndex].ee_tlv[yy].len, mEeInfo[eeIndex].ee_tlv[yy].info[0],
+                  mEeInfo[eeIndex].ee_tlv[yy].info[1], mEeInfo[eeIndex].ee_tlv[yy].info[2]);
+              }
+            eeIndex++;
           }
         }
       }
     }
   }
   DLOG_IF(INFO, nfc_debug_enabled)
-      << StringPrintf("%s: exit; mActualNumEe=%d, mNumEePresent=%d", fn,
-                      mActualNumEe, mNumEePresent);
+      << StringPrintf("%s: exit; mActualNumEe=%d, NumEePresent=%d", fn,
+                      mActualNumEe, eeIndex);
 
 #if (NXP_EXTNS == TRUE)
-  mNfceeData_t.mNfceePresent = mNumEePresent;
+  mNfceeData_t.mNfceePresent = eeIndex;
 #endif
 
   return (mActualNumEe != 0);
@@ -785,7 +802,7 @@ bool SecureElement::isActivatedInListenMode() { return mActivatedInListenMode; }
 jintArray SecureElement::getListOfEeHandles(JNIEnv* e) {
   static const char fn[] = "SecureElement::getListOfEeHandles";
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: enter", fn);
-  if (mNumEePresent == 0) return NULL;
+  if (mNfceeData_t.mNfceePresent == 0) return NULL;
 
   if (!mIsInit) {
     LOG(ERROR) << StringPrintf("%s: not init", fn);
@@ -795,10 +812,10 @@ jintArray SecureElement::getListOfEeHandles(JNIEnv* e) {
   // Get Fresh EE info.
   if (!getEeInfo()) return (NULL);
 
-  jintArray list = e->NewIntArray(mNumEePresent);  // allocate array
+  jintArray list = e->NewIntArray(mNfceeData_t.mNfceePresent);  // allocate array
   jint jj = 0;
   int cnt = 0;
-  for (int ii = 0; ii < mActualNumEe && cnt < mNumEePresent; ii++) {
+  for (int ii = 0; ii < mActualNumEe && cnt < mNfceeData_t.mNfceePresent; ii++) {
     DLOG_IF(INFO, nfc_debug_enabled)
         << StringPrintf("%s: %u = 0x%X", fn, ii, mEeInfo[ii].ee_handle);
     if (mEeInfo[ii].ee_interface[0] == NCI_NFCEE_INTERFACE_HCI_ACCESS) {
@@ -847,7 +864,7 @@ jintArray SecureElement::getActiveSecureElementList(JNIEnv* e) {
 
   jintArray list = e->NewIntArray(num_of_nfcee_present);  // allocate array
 
-  for (i = 0; i <= num_of_nfcee_present; i++) {
+  for (i = 0; i < num_of_nfcee_present; i++) {
     nfcee_handle[i] = mNfceeData_t.mNfceeHandle[i];
     nfcee_status[i] = mNfceeData_t.mNfceeStatus[i];
 
@@ -1187,74 +1204,6 @@ void SecureElement::notifyTransactionListenersOfAid(const uint8_t* aidBuffer,
   }
 TheEnd:
   delete[] tlv;
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: exit", fn);
-}
-
-/*******************************************************************************
-**
-** Function:        notifyConnectivityListeners
-**
-** Description:     Notify the NFC service about a connectivity event from
-*secure element.
-**                  evtSrc: source of event UICC/eSE.
-**
-** Returns:         None
-**
-*******************************************************************************/
-void SecureElement::notifyConnectivityListeners(uint8_t evtSrc) {
-  static const char fn[] = "SecureElement::notifyConnectivityListeners";
-  DLOG_IF(INFO, nfc_debug_enabled)
-      << StringPrintf("%s: enter; evtSrc =%u", fn, evtSrc);
-
-  JNIEnv* e = NULL;
-  ScopedAttach attach(mNativeData->vm, &e);
-  if (e == NULL) {
-    LOG(ERROR) << StringPrintf("%s: jni env is null", fn);
-    return;
-  }
-
-  if (e->ExceptionCheck()) {
-    e->ExceptionClear();
-    LOG(ERROR) << StringPrintf("%s: fail notify", fn);
-    goto TheEnd;
-  }
-
-TheEnd:
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: exit", fn);
-}
-
-/*******************************************************************************
-**
-** Function:        notifyEmvcoMultiCardDetectedListeners
-**
-** Description:     Notify the NFC service about a multiple card presented to
-**                  Emvco reader.
-**
-** Returns:         None
-**
-*******************************************************************************/
-void SecureElement::notifyEmvcoMultiCardDetectedListeners() {
-  static const char fn[] =
-      "SecureElement::notifyEmvcoMultiCardDetectedListeners";
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: enter", fn);
-
-  JNIEnv* e = NULL;
-  ScopedAttach attach(mNativeData->vm, &e);
-  if (e == NULL) {
-    LOG(ERROR) << StringPrintf("%s: jni env is null", fn);
-    return;
-  }
-
-  e->CallVoidMethod(
-      mNativeData->manager,
-      android::gCachedNfcManagerNotifyEmvcoMultiCardDetectedListeners);
-  if (e->ExceptionCheck()) {
-    e->ExceptionClear();
-    LOG(ERROR) << StringPrintf("%s: fail notify", fn);
-    goto TheEnd;
-  }
-
-TheEnd:
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: exit", fn);
 }
 
@@ -1697,8 +1646,6 @@ bool SecureElement::transceive(uint8_t* xmitBuffer, int32_t xmitBufferSize,
       }
       if (nfcFL.nfcNxpEse) {
         if (nfcFL.eseFL._ESE_DUAL_MODE_PRIO_SCHEME ==
-                nfcFL.eseFL._ESE_WIRED_MODE_RESUME ||
-            nfcFL.eseFL._ESE_DUAL_MODE_PRIO_SCHEME ==
                 nfcFL.eseFL._ESE_WIRED_MODE_RESUME) {
           if (!checkForWiredModeAccess()) {
             DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
@@ -1772,7 +1719,7 @@ bool SecureElement::transceive(uint8_t* xmitBuffer, int32_t xmitBufferSize,
 #endif
     if (nfaStat == NFA_STATUS_OK) {
       //          waitOk = mTransceiveEvent.wait (timeoutMillisec);
-      mTransceiveEvent.wait();
+      mTransceiveEvent.wait(timeoutMillisec);
 #if (NXP_EXTNS == TRUE)
       if (nfcFL.nfcNxpEse && (gWtxCount > mWmMaxWtxCount)) {
         tranStatus = TRANSCEIVE_STATUS_MAX_WTX_REACHED;
@@ -2139,7 +2086,7 @@ bool SecureElement::getSeVerInfo(int seIndex, char* verInfo, int verInfoSz,
     return false;
   }
 
-    strlcpy(verInfo, "Version info not available", verInfoSz-2);
+  strlcpy(verInfo, "Version info not available", verInfoSz-2);
 
   uint8_t pipe = (mEeInfo[seIndex].ee_handle == EE_HANDLE_0xF3) ? 0x70 : 0x71;
   uint8_t host = (pipe == mStaticPipeProp) ? 0x02 : 0x03;
@@ -2326,6 +2273,9 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
       DLOG_IF(INFO, nfc_debug_enabled)
           << StringPrintf("%s: NFA_HCI_EVENT_SENT_EVT; status=0x%X", fn,
                           eventData->evt_sent.status);
+      if (eventData->evt_sent.status != NFA_STATUS_OK) {
+        sSecElem.mTransceiveEvent.notifyOne();
+      }
       break;
 
     case NFA_HCI_RSP_RCVD_EVT:  // response received from secure element
@@ -2556,7 +2506,6 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
         }
         //            int pipe = (eventData->rcvd_evt.pipe);
         //            /*commented to eliminate unused variable warning*/
-        sSecElem.notifyConnectivityListeners(evtSrc);
       } else {
         DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
             "%s: NFA_HCI_EVENT_RCVD_EVT; ################################### "
@@ -3399,6 +3348,7 @@ void SecureElement::NfccStandByOperation(nfcc_standby_operation_t value) {
         }
       }
     }  // this is to handle stop timer also.
+    FALLTHROUGH;
     case STANDBY_TIMER_STOP: {
       if (nfccStandbytimeout > 0) mNFCCStandbyModeTimer.kill();
     }
@@ -3443,6 +3393,7 @@ void SecureElement::NfccStandByOperation(nfcc_standby_operation_t value) {
       }
     }
       if (nfcFL.eseFL._WIRED_MODE_STANDBY == true) break;
+      FALLTHROUGH;
     case STANDBY_TIMER_TIMEOUT: {
       bool stat = false;
       if (nfcFL.eseFL._ESE_DWP_SPI_SYNC_ENABLE) {
@@ -3809,8 +3760,6 @@ static void spiEventHandlerThread_cleanup_handler(void* arg) {
 **
 *******************************************************************************/
 void spiEventHandlerThread_exit_handler(int sig) {
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
-      "%s: spiEventHandlerThread exit handler %d", __func__, sig);
   pthread_exit(0);
 }
 
@@ -3840,7 +3789,7 @@ void* spiEventHandlerThread(void* arg) {
   }
   (void)arg;
   uint16_t usEvent = 0, usEvtLen = 0;
-  tNFC_STATUS stat;
+  tNFC_STATUS stat = NFA_STATUS_FAILED;
 
   NFCSTATUS ese_status = NFA_STATUS_FAILED;
 
@@ -4049,7 +3998,9 @@ void releaseSPIEvtHandlerThread() {
     DLOG_IF(INFO, nfc_debug_enabled)
         << StringPrintf("Killed spiEvtHandler_thread error status:%d", errno);
   } else {
-    pthread_join(spiEvtHandler_thread, NULL);
+    if (pthread_join(spiEvtHandler_thread, NULL) != 0) {
+      LOG(ERROR) << StringPrintf("%s: SpiEvtHandler failed ", __func__);
+    }
   }
   DLOG_IF(INFO, nfc_debug_enabled)
       << StringPrintf("Exit releaseSPIEvtHandlerThread");
@@ -4591,7 +4542,7 @@ uint16_t SecureElement::getEeStatus(uint16_t eehandle) {
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
       "%s  num_nfcee_present = %d", __func__, mNfceeData_t.mNfceePresent);
 
-  for (i = 1; i <= mNfceeData_t.mNfceePresent; i++) {
+  for (i = 0; i < mNfceeData_t.mNfceePresent; i++) {
     if (mNfceeData_t.mNfceeHandle[i] == eehandle) {
       ee_status = mNfceeData_t.mNfceeStatus[i];
       DLOG_IF(INFO, nfc_debug_enabled)
@@ -4778,6 +4729,7 @@ void SecureElement::setDwpTranseiveState(bool block, tNFCC_EVTS_NTF action) {
         SyncEventGuard guard(mRfFieldOffEvent);
         mRfFieldOffEvent.notifyOne();
       }
+      FALLTHROUGH;
     case NFCC_DEACTIVATED_NTF:
     case NFCC_CE_DATA_EVT:
       if (block) {
@@ -4915,7 +4867,11 @@ tNFA_STATUS SecureElement::setNfccPwrConfig(uint8_t value) {
     }
     cur_value = value;
     SyncEventGuard guard(mPwrLinkCtrlEvent);
-    nfaStat = NFA_SendPowerLinkCommand((uint8_t)EE_HANDLE_0xF3, value);
+    tNFC_INTF_REQ_SRC reqSrc = NFC_INTF_REQ_SRC_DWP;
+    if ((value == 0x03) && dual_mode_current_state & SPI_ON) {
+      reqSrc = NFC_INTF_REQ_SRC_SPI;
+    }
+    nfaStat = NFA_SendPowerLinkCommand((uint8_t)EE_HANDLE_0xF3, value, reqSrc);
     if (nfaStat == NFA_STATUS_OK && !android::nfcManager_isNfcDisabling())
       if (mPwrLinkCtrlEvent.wait(DWP_LINK_ACTV_TIMEOUT) == false) {
         DLOG_IF(ERROR, nfc_debug_enabled)
