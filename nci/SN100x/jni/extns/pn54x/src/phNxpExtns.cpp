@@ -13,6 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+ /******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2019 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 #ifdef ESE_NFC_SYNCHRONIZATION
 #include <linux/ese-nfc-sync.h>
 #endif
@@ -22,7 +41,7 @@
 
 #include <android-base/stringprintf.h>
 #include <base/logging.h>
-#include <phNxpConfig.h>
+#include "nfc_config.h"
 #include <phNxpExtns_MifareStd.h>
 #include <phNxpLog.h>
 
@@ -58,9 +77,6 @@ static int fd_ese_nfc_sync; /*file descriptor to hold sync driver handle*/
 NFCSTATUS EXTNS_Init(tNFA_DM_CBACK* p_nfa_dm_cback,
                      tNFA_CONN_CBACK* p_nfa_conn_cback) {
   NFCSTATUS status = NFCSTATUS_FAILED;
-
-  /* reset config cache */
-  resetNxpConfig();
 
   /* Initialize Log level */
   phNxpLog_InitializeLogLevel();
@@ -422,7 +438,7 @@ NFCSTATUS EXTNS_MfcTransceive(uint8_t* p_data, uint32_t len) {
 ** Returns          NFCSTATUS_SUCCESS
 **
 *******************************************************************************/
-NFCSTATUS EXTNS_MfcInit(tNFA_ACTIVATED activationData) {
+NFCSTATUS EXTNS_MfcInit(tNFA_ACTIVATED &activationData) {
   tNFC_ACTIVATE_DEVT rfDetail = activationData.activate_ntf;
 
   NdefMap->psRemoteDevInfo->RemoteDevInfo.Iso14443A_Info.Sak =

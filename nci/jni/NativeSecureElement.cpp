@@ -2,7 +2,7 @@
  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright (C) 2015-2018 NXP Semiconductors
+ * Copyright (C) 2015-2019 NXP Semiconductors
  * The original Work has been changed by NXP Semiconductors.
  *
  * Copyright (C) 2012 The Android Open Source Project
@@ -150,8 +150,12 @@ static jint nativeNfcSecureElement_doOpenSecureElementConnection(JNIEnv*,
   if (nfcFL.nfcNxpEse) {
     if (nfcFL.eseFL._ESE_FORCE_ENABLE &&
         (!(p61_current_state & (P61_STATE_SPI | P61_STATE_SPI_PRIO))) &&
-        (!(dual_mode_current_state & CL_ACTIVE)))
-      stat = se.SecEle_Modeset(0x01);  // Workaround
+        (!(dual_mode_current_state & CL_ACTIVE))) {
+      stat = se.SecEle_Modeset(0x01);// Workaround
+      if(!stat) {
+        LOG(ERROR) << StringPrintf("Modeset failed");
+      }
+    }
     usleep(150000); /*provide enough delay if NFCC enter in recovery*/
   }
 #endif
@@ -283,7 +287,7 @@ static jboolean nativeNfcSecureElement_doDisconnectSecureElementConnection(
   }
 
 #if (NXP_EXTNS == TRUE)
-    NFCSTATUS status = NFCSTATUS_FAILED;
+  NFCSTATUS status = NFCSTATUS_FAILED;
 
   SecureElement& se = SecureElement::getInstance();
   se.NfccStandByOperation(STANDBY_TIMER_STOP);
@@ -294,7 +298,7 @@ static jboolean nativeNfcSecureElement_doDisconnectSecureElementConnection(
 
 #if (NXP_EXTNS == TRUE)
   if (nfcFL.nfcNxpEse) {
-    if (handle == (SecureElement::EE_HANDLE_0xF8 || se.EE_HANDLE_0xF4)) {
+    if ((handle == SecureElement::EE_HANDLE_0xF8) || (handle == se.EE_HANDLE_0xF4)) {
       stat = SecureElement::getInstance().disconnectEE(handle);
       se.mIsWiredModeOpen = false;
       if (nfcFL.eseFL._ESE_EXCLUSIVE_WIRED_MODE) {
@@ -400,7 +404,7 @@ static int checkP61Status(void) {
 #endif
 /*******************************************************************************
 **
-** Function:        nativeNfcSecureElement_doResetSecureElement
+** Function:        nativeNfcSecureElement_doResetForEseCosUpdate
 **
 ** Description:     Reset the secure element.
 **                  e: JVM environment.
@@ -410,7 +414,7 @@ static int checkP61Status(void) {
 ** Returns:         True if ok.
 **
 *******************************************************************************/
-static jboolean nativeNfcSecureElement_doResetSecureElement(JNIEnv*, jobject,
+static jboolean nativeNfcSecureElement_doResetForEseCosUpdate(JNIEnv*, jobject,
                                                             jint handle) {
   bool stat = false;
   if (nfcFL.nfcNxpEse) {
@@ -475,8 +479,8 @@ static jboolean nativeNfcSecureElement_doResetSecureElement(JNIEnv*, jobject,
  ** Returns:         True if ok.
  **
  *******************************************************************************/
-__attribute__((unused)) static jboolean nativeNfcSecureElement_doeSEChipResetSecureElement(JNIEnv*,
-                                                                   jobject) {
+__attribute__((unused)) static jboolean
+nativeNfcSecureElement_doeSEChipResetSecureElement(JNIEnv*, jobject) {
   bool stat = false;
   NFCSTATUS status = NFCSTATUS_FAILED;
   unsigned long num = 0x01;
@@ -569,7 +573,7 @@ static jbyteArray nativeNfcSecureElement_doTransceive(JNIEnv* e, jobject,
     LOG(ERROR) << StringPrintf("%s: Wired Mode Max WTX count reached",
                                __FUNCTION__);
     jbyteArray result = e->NewByteArray(0);
-    nativeNfcSecureElement_doResetSecureElement(e, NULL, handle);
+    nativeNfcSecureElement_doResetForEseCosUpdate(e, NULL, handle);
     return result;
   }
 
@@ -603,8 +607,9 @@ static JNINativeMethod gMethods[] = {
      (void*)nativeNfcSecureElement_doOpenSecureElementConnection},
     {"doNativeDisconnectSecureElementConnection", "(I)Z",
      (void*)nativeNfcSecureElement_doDisconnectSecureElementConnection},
-    {"doNativeResetSecureElement", "(I)Z",
-     (void*)nativeNfcSecureElement_doResetSecureElement},
+    {"doResetForEseCosUpdate", "(I)Z",
+     (void*)nativeNfcSecureElement_doResetForEseCosUpdate},
+
     {"doTransceive", "(I[B)[B", (void*)nativeNfcSecureElement_doTransceive},
     {"doNativeGetAtr", "(I)[B", (void*)nativeNfcSecureElement_doGetAtr},
 };

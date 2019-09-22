@@ -12,7 +12,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018 NXP
+*  Copyright 2018-2019 NXP
 *
 ******************************************************************************/
 
@@ -22,7 +22,6 @@
 #include "NfcJniUtil.h"
 #include "nfc_api.h"
 #include "config.h"
-#include "phNxpConfig.h"
 #include "SyncEvent.h"
 #include "nfa_ee_api.h"
 #include "nfa_hci_api.h"
@@ -54,8 +53,8 @@ public:
   tNFA_HANDLE  mActiveEeHandle;
   static const int MAX_NUM_EE = NFA_EE_MAX_EE_SUPPORTED;    /*max number of EE's*/
   static const uint8_t UICC_ID = 0x02;
-  static const uint8_t UICC2_ID = 0x04;
-  static const uint8_t UICC3_ID = 0x08;
+  static const uint8_t UICC2_ID = 0x03;
+  static const uint8_t UICC3_ID = 0x04;
   static const uint8_t ESE_ID = 0x01;
   static const uint8_t DH_ID = 0x00;
   static const uint8_t NFCC_DECIDES     = 0x00;     //NFCC decides
@@ -84,7 +83,6 @@ public:
   static const uint8_t EE_APP_HANLDE_UICC2 = 0xF8;
   static const uint8_t EE_APP_HANLDE_UICC3 = 0xF9;
   uint8_t muicc2_selected;    /* UICC2 or UICC3 selected from config file*/
-  SyncEvent       mApduPaternAddRemoveEvent;
   SyncEvent   mAidAddRemoveEvent;
 /*******************************************************************************
 **
@@ -110,7 +108,7 @@ void getEeHandleList(tNFA_HANDLE *list, uint8_t* count);
   static const tNFA_HANDLE EE_HANDLE_UICC = 0x480;
   static const uint8_t NFCEE_ID_ESE = 0x01;
   static const uint8_t NFCEE_ID_UICC = 0x02;
-  
+
   static const unsigned int MAX_RESPONSE_SIZE = 0x8800;//1024; //34K
   static const uint8_t STATIC_PIPE_0x71 = 0x71; //Broadcom's proprietary static pipe
   static const uint8_t EVT_ABORT_MAX_RSP_LEN = 40;
@@ -126,7 +124,7 @@ void getEeHandleList(tNFA_HANDLE *list, uint8_t* count);
   bool    mGetAtrRspwait;
   bool    mAbortEventWaitOk;
 
-  uint8_t mTransceiveStatus;      /* type to indicate the status of transceive sent*/
+  tNFA_STATUS mTransceiveStatus;      /* type to indicate the status of transceive sent*/
   tNFA_HCI_GET_GATE_PIPE_LIST mHciCfg;
   tNFA_STATUS mCommandStatus;     //completion status of the last command
   tNFA_HANDLE     mNfaHciHandle;          //NFA handle to NFA's HCI component
@@ -227,6 +225,16 @@ bool    mActivatedInListenMode; // whether we're activated in listen mode
 **
 *******************************************************************************/
 static SecureElement& getInstance();
+/*******************************************************************************
+**
+** Function:        isWiredModeOpen
+**
+** Description:     This function returns whether wired mode is running or not.
+**
+** Returns:         int
+**
+*******************************************************************************/
+int isWiredModeOpen();
 /*******************************************************************************
 **
 ** Function:        initialize

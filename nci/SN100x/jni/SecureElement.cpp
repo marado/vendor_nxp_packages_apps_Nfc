@@ -3,7 +3,7 @@
  *  Copyright (c) 2016, The Linux Foundation. All rights reserved.
  *  Not a Contribution.
  *
- *  Copyright (C) 2018 NXP Semiconductors
+ *  Copyright (C) 2018-2019 NXP Semiconductors
  *  The original Work has been changed by NXP Semiconductors.
  *
  *  Copyright (C) 2012 The Android Open Source Project
@@ -32,7 +32,6 @@
 #include <semaphore.h>
 #include <errno.h>
 #include "config.h"
-#include "phNxpConfig.h"
 #include "nfc_config.h"
 #include "RoutingManager.h"
 #include "HciEventManager.h"
@@ -60,18 +59,46 @@ uint8_t  SecureElement::mStaticPipeProp;
 **
 *******************************************************************************/
 SecureElement::SecureElement() :
+    mActiveEeHandle(NFA_HANDLE_INVALID),
     mNewPipeId (0),
+    mIsWiredModeOpen (false),
+    SmbTransceiveTimeOutVal(0),
+    mErrorRecovery(false),
+    EE_HANDLE_0xF4(0),
+    muicc2_selected(0),
     mNativeData(NULL),
+    mthreadnative(NULL),
     mbNewEE (true),
     mIsInit (false),
+    mTransceiveWaitOk (false),
+    mGetAtrRspwait (false),
+    mAbortEventWaitOk (false),
     mNewSourceGate (0),
+    mAtrStatus (0),
+    mAtrRespLen (0),
+    mNumEePresent (0),
+    mCreatedPipe (0),
     mRfFieldIsOn(false),
     mActivatedInListenMode (false)
 {
+    mPwrCmdstatus = NFA_STATUS_FAILED;
+    mModeSetNtfstatus = NFA_STATUS_FAILED;
+    mNfccPowerMode = 0;
+    mTransceiveStatus = NFA_STATUS_FAILED;
+    mCommandStatus = NFA_STATUS_FAILED;
+    mNfaHciHandle = NFA_HANDLE_INVALID;
+    mActualResponseSize = 0;
+    mAtrInfolen = 0;
+    mActualNumEe = 0;
     memset (&mEeInfo, 0, nfcFL.nfccFL._NFA_EE_MAX_EE_SUPPORTED *sizeof(tNFA_EE_INFO));
     memset (mAidForEmptySelect, 0, sizeof(mAidForEmptySelect));
+    memset (mVerInfo, 0, sizeof(mVerInfo));
+    memset (mAtrInfo, 0, sizeof(mAtrInfo));
+    memset (mResponseData, 0, sizeof(mResponseData));
+    memset (mAtrRespData, 0, sizeof(mAtrRespData));
     memset (&mHciCfg, 0, sizeof(mHciCfg));
     memset (&mLastRfFieldToggle, 0, sizeof(mLastRfFieldToggle));
+    memset (&mNfceeData_t, 0, sizeof(mNfceeData));
 }
 /*******************************************************************************
 **
@@ -110,35 +137,21 @@ bool SecureElement::initialize(nfc_jni_native_data* native) {
     mbNewEE         = true;
     mNewPipeId      = 0;
     mNewSourceGate  = 0;
-    unsigned long val = 0;
     memset (mEeInfo, 0, sizeof(mEeInfo));
     memset (&mHciCfg, 0, sizeof(mHciCfg));
     memset(mAidForEmptySelect, 0, sizeof(mAidForEmptySelect));
     mActivatedInListenMode = false;
-    if (GetNxpNumValue(NAME_NXP_DEFAULT_UICC2_SELECT, &muicc2_selected, sizeof(muicc2_selected)) == false)
-    {
-        muicc2_selected = UICC2_ID;
-    }
-    if (GetNxpNumValue(NAME_NXP_SMB_TRANSCEIVE_TIMEOUT, &val, sizeof(val)) == true)
-    {
-        SmbTransceiveTimeOutVal = val;
-    }
-    else
-    {
-        SmbTransceiveTimeOutVal = WIRED_MODE_TRANSCEIVE_TIMEOUT;
-    }
+    muicc2_selected = NfcConfig::getUnsigned(NAME_NXP_DEFAULT_UICC2_SELECT, UICC2_ID);
+
+    SmbTransceiveTimeOutVal = NfcConfig::getUnsigned(NAME_NXP_SMB_TRANSCEIVE_TIMEOUT, WIRED_MODE_TRANSCEIVE_TIMEOUT);
+
     if(SmbTransceiveTimeOutVal < WIRED_MODE_TRANSCEIVE_TIMEOUT)
     {
         SmbTransceiveTimeOutVal = WIRED_MODE_TRANSCEIVE_TIMEOUT;
     }
-    if (GetNxpNumValue(NAME_NXP_SMB_ERROR_RETRY, &val, sizeof(val)) == true)
-    {
-      mErrorRecovery = val;
-    }
-    else
-    {
-      mErrorRecovery = false;
-    }
+
+    mErrorRecovery = NfcConfig::getUnsigned(NAME_NXP_SMB_ERROR_RETRY, 0x00);
+
     LOG(INFO) << StringPrintf("%s: SMB transceive timeout %d SMB Error recovery %d", fn, SmbTransceiveTimeOutVal, mErrorRecovery);
 
     initializeEeHandle();
@@ -730,15 +743,14 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
 bool SecureElement::notifySeInitialized() {
     JNIEnv* e = NULL;
     static const char fn [] = "SecureElement::notifySeInitialized";
+    if (NULL == mNativeData) {
+      return false;
+    }
     ScopedAttach attach(mNativeData->vm, &e);
     if (e == NULL)
     {
         DLOG_IF(ERROR, nfc_debug_enabled)
             << StringPrintf("%s: jni env is null", fn);
-        return false;
-    }
-    if(mNativeData == NULL)
-    {
         return false;
     }
     e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifySeInitialized);
@@ -1300,7 +1312,6 @@ bool SecureElement::doNfcee_Session_Reset()
   reset_nfcee_session) == NFA_STATUS_OK)
   {
     LOG(INFO) << StringPrintf("%s Nfcee session reset success", fn);
-    android::startRfDiscovery(true);
 
     if(setNfccPwrConfig(POWER_ALWAYS_ON) == NFA_STATUS_OK)
     {
@@ -1329,6 +1340,7 @@ bool SecureElement::doNfcee_Session_Reset()
   else
     status = NFA_STATUS_FAILED;
 
+  android::startRfDiscovery(true);
   return (status == NFA_STATUS_OK) ? true: false;
 }
 
@@ -1560,8 +1572,11 @@ tNFA_STATUS SecureElement::setNfccPwrConfig(uint8_t value)
     cur_value = value;
     SyncEventGuard guard (mPwrLinkCtrlEvent);
     nfaStat = NFA_SendPowerLinkCommand((uint8_t)EE_HANDLE_0xF3, value);
-    if(nfaStat ==  NFA_STATUS_OK)
-       mPwrLinkCtrlEvent.wait(NFC_CMD_TIMEOUT);
+    if(nfaStat ==  NFA_STATUS_OK) {
+        if (mPwrLinkCtrlEvent.wait(NFC_CMD_TIMEOUT) == false) {
+            LOG(ERROR) << StringPrintf("mPwrLinkCtrlEvent has terminated");
+        }
+    }
     LOG(INFO) << StringPrintf("%s: Exit: Status= 0x%X", fn, mPwrCmdstatus);
     return mPwrCmdstatus;
 }
@@ -1700,6 +1715,19 @@ void SecureElement::releasePendingTransceive()
     LOG(INFO) << StringPrintf("%s: Exit", fn);
 }
 
+/*******************************************************************************
+**
+** Function:        isWiredModeOpen
+**
+** Description:     Wired Mode open status
+**
+** Returns:         0 if wired mode closed.
+**
+*******************************************************************************/
+int SecureElement::isWiredModeOpen() {
+  if (mIsWiredModeOpen) return 1;
+  return 0;
+}
 /**********************************************************************************
  **
  ** Function:        getUiccStatus

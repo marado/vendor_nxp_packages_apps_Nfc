@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright (C) 2018 NXP Semiconductors
+ * Copyright (C) 2018-2019 NXP Semiconductors
  * The original Work has been changed by NXP Semiconductors.
  * Copyright (C) 2010 The Android Open Source Project
  *
@@ -49,7 +49,8 @@ public class NativeNfcManager implements DeviceHost {
 
     static final int DEFAULT_LLCP_MIU = 1980;
     static final int DEFAULT_LLCP_RWSIZE = 2;
-
+    static final int MODE_DEDICATED = 1;
+    static final int MODE_NORMAL = 0;
     static final String DRIVER_NAME = "android-nci";
 
     private static INqNfc mNqHal = null;
@@ -99,8 +100,8 @@ public class NativeNfcManager implements DeviceHost {
                 mNqHal = INqNfc.getService();
             }
             if(mNqHal != null) {
-                isHalServiceSupported = true;
                 chipIdValue = mNqHal.getNfcChipId();
+                isHalServiceSupported = true;
                 Log.d(TAG, "Chip-ID received from HAL interface: "+chipIdValue);
             }
         }
@@ -110,7 +111,7 @@ public class NativeNfcManager implements DeviceHost {
 
         if(isHalServiceSupported == false) {
             Log.d(TAG, "Reading system property for chip-id.");
-            chipIdValue = SystemProperties.get("vendor.qti.nfc.chipid", "");
+            chipIdValue = SystemProperties.get("vendor.qti.nfc.chipid", "0x51");
             Log.d(TAG, "Chip-ID received from system property: "+chipIdValue);
         }
 
@@ -147,14 +148,22 @@ public class NativeNfcManager implements DeviceHost {
     public native int doGetLastError();
 
     @Override
-    public void checkFirmware() {
-        doDownload();
+    public boolean checkFirmware() {
+        return doDownload();
     }
-    public native int doaccessControlForCOSU (int mode);
+    public native boolean doPartialInitForEseCosUpdate();
+    public native boolean doPartialDeinitForEseCosUpdate();
 
     @Override
-    public int accessControlForCOSU (int mode) {
-        return doaccessControlForCOSU (mode);
+    public boolean accessControlForCOSU (int mode) {
+        boolean stat = false;
+        if(mode == MODE_DEDICATED) {
+             stat = doPartialInitForEseCosUpdate();
+        }
+        else if(mode == MODE_NORMAL) {
+             stat = doPartialDeinitForEseCosUpdate();
+        }
+        return stat;
     }
 
     private native boolean doInitialize();
@@ -224,7 +233,7 @@ public class NativeNfcManager implements DeviceHost {
     public boolean setRoutingEntry(int type, int value, int route, int power) {
         return(doSetRoutingEntry(type, value, route, power));
     }
-    
+
     @Override
     public native boolean routeAid(byte[] aid, int route, int aidInfo, int powerState);
 
@@ -232,9 +241,6 @@ public class NativeNfcManager implements DeviceHost {
     @Override
     public native boolean unrouteAid(byte[] aid);
 
-    @Override
-    public native boolean routeApduPattern(int route, int powerState, byte[] apduData, byte[] apduMask);
-    
     @Override
     public native int getAidTableSize();
 
@@ -251,6 +257,9 @@ public class NativeNfcManager implements DeviceHost {
     public native int   getDefaultFelicaCLTRoute();
 
     @Override
+    public native void doResonantFrequency(boolean isResonantFreq);
+
+    @Override
     public native int   getDefaultAidPowerState();
 
     @Override
@@ -263,6 +272,9 @@ public class NativeNfcManager implements DeviceHost {
     public native int   getDefaultFelicaCLTPowerState();
 
     @Override
+    public native int getGsmaPwrState();
+
+    @Override
     public native boolean commitRouting();
 
     @Override
@@ -272,10 +284,13 @@ public class NativeNfcManager implements DeviceHost {
     public native void setEmptyAidRoute(int deafultAidroute);
 
     @Override
-    public native boolean unrouteApduPattern(byte[] apduData);
+    public native int[] doGetActiveSecureElementList();
 
     @Override
-    public native int[] doGetActiveSecureElementList();
+    public native int doSetFieldDetectMode(boolean mode);
+
+    @Override
+    public native boolean isFieldDetectEnabled();
 
     public native int doRegisterT3tIdentifier(byte[] t3tIdentifier);
 
@@ -321,6 +336,7 @@ public class NativeNfcManager implements DeviceHost {
     public native void doSetScreenState(int screen_state_mask);
 
     @Override
+
     public native int getNciVersion();
 
     private native void doEnableDiscovery(int techMask,
@@ -570,6 +586,12 @@ public class NativeNfcManager implements DeviceHost {
     public boolean disableScreenOffSuspend() {
         doDisableScreenOffSuspend();
         return true;
+    }
+
+    private native boolean doSetNfcSecure(boolean enable);
+    @Override
+    public boolean setNfcSecure(boolean enable) {
+        return doSetNfcSecure(enable);
     }
 
     /**

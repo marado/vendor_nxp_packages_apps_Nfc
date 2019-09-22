@@ -33,7 +33,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018 NXP
+*  Copyright 2018-2019 NXP
 *
 ******************************************************************************/
 #pragma once
@@ -47,7 +47,12 @@
 #include "nfa_ee_api.h"
 #if(NXP_EXTNS == TRUE)
 #include "SecureElement.h"
+#define TYPE_LENGTH_SIZE 0x02
 #define AVAILABLE_PROTO_ENTRIES() 0x05
+#define TECHNOLOGY_BASED_ROUTING 0x00
+#define PROTOCOL_BASED_ROUTING 0x01
+#define AID_BASED_ROUTING 0x02
+#define ROUTE_UICC AID_BASED_ROUTING
 #endif
 using namespace std;
 #if(NXP_EXTNS == TRUE)
@@ -102,8 +107,12 @@ typedef struct routeInfo {
 #endif
 class RoutingManager {
  public:
+#if(NXP_EXTNS == TRUE)
+  uint32_t mDefaultGsmaPowerState;
+#endif
   static RoutingManager& getInstance();
   bool initialize(nfc_jni_native_data* native);
+  void deinitialize();
   void enableRoutingToHost();
   void disableRoutingToHost();
 #if(NXP_EXTNS != TRUE)
@@ -116,7 +125,11 @@ class RoutingManager {
   void deregisterT3tIdentifier(int handle);
   void onNfccShutdown();
   int registerJniFunctions(JNIEnv* e);
+  bool setNfcSecure(bool enable);
+  void updateRoutingTable();
 #if(NXP_EXTNS == TRUE)
+    void getRouting(uint16_t* routeLen, uint8_t* routingBuff);
+    void processGetRoutingRsp(tNFA_DM_CBACK_DATA* eventData);
     uint16_t getUiccRouteLocId(const int route);
     static const int NFA_SET_AID_ROUTING = 4;
     static const int NFA_SET_TECHNOLOGY_ROUTING = 1;
@@ -137,14 +150,13 @@ class RoutingManager {
     void configureOffHostNfceeTechMask(void);
     void configureEeRegister(bool eeReg);
     void dumpTables(int);
-    bool addApduRouting(uint8_t route, uint8_t powerState,const uint8_t* apduData,
-         uint8_t apduDataLen ,const uint8_t* apduMask, uint8_t apduMaskLen);
 
-    bool removeApduRouting(uint8_t apduDataLen, const uint8_t* apduData);
     uint32_t getUicc2selected();
     bool addAidRouting(const uint8_t* aid, uint8_t aidLen,
                                    int route, int aidInfo, int power);
-
+    uint16_t sRoutingBuffLen;
+    uint8_t* sRoutingBuff;
+    SyncEvent       sNfaGetRoutingEvent;
     SyncEvent       mAidAddRemoveEvent;
 #endif
  private:
@@ -157,6 +169,9 @@ class RoutingManager {
                   tNFA_STATUS status);
   void notifyActivated(uint8_t technology);
   void notifyDeactivated(uint8_t technology);
+  tNFA_TECHNOLOGY_MASK updateEeTechRouteSetting();
+  void updateDefaultProtocolRoute();
+  void updateDefaultRoute();
 
   // See AidRoutingManager.java for corresponding
   // AID_MATCHING_ constants
@@ -176,16 +191,25 @@ class RoutingManager {
       JNIEnv* e);
   static int com_android_nfc_cardemulation_doGetDefaultOffHostRouteDestination(
       JNIEnv* e);
+  static jbyteArray com_android_nfc_cardemulation_doGetOffHostUiccDestination(
+      JNIEnv* e);
+  static jbyteArray com_android_nfc_cardemulation_doGetOffHostEseDestination(
+      JNIEnv* e);
   static int com_android_nfc_cardemulation_doGetAidMatchingMode(JNIEnv* e);
-
+  static int com_android_nfc_cardemulation_doGetDefaultIsoDepRouteDestination(
+      JNIEnv* e);
   std::vector<uint8_t> mRxDataBuffer;
   map<int, uint16_t> mMapScbrHandle;
+  bool mSecureNfcEnabled;
 
   // Fields below are final after initialize()
   nfc_jni_native_data* mNativeData;
   int mDefaultOffHostRoute;
+  vector<uint8_t> mOffHostRouteUicc;
+  vector<uint8_t> mOffHostRouteEse;
   int mDefaultFelicaRoute;
   int mDefaultEe;
+  int mDefaultIsoDepRoute;
   int mAidMatchingMode;
   int mNfcFOnDhHandle;
   bool mIsScbrSupported;
@@ -242,19 +266,9 @@ class RoutingManager {
     int mHostListnTechMask;
     int mUiccListnTechMask;
     int mFwdFuntnEnable;
-    int mHostListnEnable;
     uint32_t mDefaultIso7816SeID;
     uint32_t mDefaultIso7816Powerstate;
-    uint32_t mDefaultIsoDepSeID;
-    uint32_t mDefaultIsoDepPowerstate;
-    uint32_t mDefaultT3TSeID;
-    uint32_t mDefaultT3TPowerstate;
-    uint32_t mDefaultTechType;
     uint32_t mDefaultTechASeID;
-    uint32_t mDefaultTechAPowerstate;
-    uint32_t mDefaultTechBSeID;
-    uint32_t mDefaultTechBPowerstate;
-    uint32_t mDefaultTechFSeID;
     uint32_t mDefaultTechFPowerstate;
     protoEntry_t mProtoTableEntries[MAX_PROTO_ENTRIES];
     techEntry_t mTechTableEntries[MAX_TECH_ENTRIES];
@@ -263,5 +277,7 @@ class RoutingManager {
     uint32_t mTechSupportedByEse;
     uint32_t mTechSupportedByUicc1;
     uint32_t mTechSupportedByUicc2;
+    uint8_t mOffHostAidRoutingPowerState;
+
 #endif
 };

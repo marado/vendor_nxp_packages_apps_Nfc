@@ -17,7 +17,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2015-2018 NXP Semiconductors
+ *  Copyright (C) 2015-2019 NXP Semiconductors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@
 #include "RoutingManager.h"
 #include "SyncEvent.h"
 #include "config.h"
-
+#include "nfc_config.h"
 #include "nfa_api.h"
 #include "nfa_rw_api.h"
 
@@ -81,6 +81,8 @@ void NxpPropCmd_OnResponseCallback(uint8_t event, uint16_t param_len,
   uint8_t status = NFA_STATUS_FAILED;
 
   switch (oid) {
+  case (0x03):
+  /*FALL_THRU*/
   case (0x1A):
   /*FALL_THRU*/
   case (0x1C):
@@ -147,18 +149,19 @@ static void NxpResponse_Cb(uint8_t event, uint16_t param_len,
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
       "NxpResponse_Cb Received length data = 0x%x status = 0x%x", param_len,
       p_param[3]);
-
-  if (p_param[3] == 0x00) {
-    SetCbStatus(NFA_STATUS_OK);
-  } else {
-    SetCbStatus(NFA_STATUS_FAILED);
+  if (p_param != NULL) {
+    if (p_param[3] == 0x00) {
+      SetCbStatus(NFA_STATUS_OK);
+    } else {
+      SetCbStatus(NFA_STATUS_FAILED);
+    }
+    gnxpfeature_conf.rsp_len = (uint8_t)param_len;
+    if (param_len > 0) {
+      memcpy(gnxpfeature_conf.rsp_data, p_param, param_len);
+    }
+    SyncEventGuard guard(gnxpfeature_conf.NxpFeatureConfigEvt);
+    gnxpfeature_conf.NxpFeatureConfigEvt.notifyOne();
   }
-  gnxpfeature_conf.rsp_len = (uint8_t)param_len;
-  if (param_len > 0 && p_param != NULL) {
-    memcpy(gnxpfeature_conf.rsp_data, p_param, param_len);
-  }
-  SyncEventGuard guard(gnxpfeature_conf.NxpFeatureConfigEvt);
-  gnxpfeature_conf.NxpFeatureConfigEvt.notifyOne();
 }
 
 
@@ -186,8 +189,43 @@ tNFA_STATUS NxpNfc_Write_Cmd_Common(uint8_t retlen, uint8_t* buffer) {
   status = GetCbStatus();
   return status;
 }
+/*******************************************************************************
+ **
+ ** Function:        getNumValue()
+ **
+ ** Description:     get the value from th config file.
+ **
+ ** Returns:         success/failure
+ **
+ *******************************************************************************/
+uint32_t getNumValue(const char* key ,uint32_t value) {
+  return NfcConfig::getUnsigned(key, value);
+}
 
+/*******************************************************************************
+ **
+ ** Function:        send_flush_ram_to_flash
+ **
+ ** Description:     This is used to update ram to flash command to NFCC.
+ **                  This will write the contents of RAM to FLASH.This will
+ **                  be sent only one time after NFC init.
+ **
+ ** Returns:         NFA_STATUS_OK on success
+ **www
+ *******************************************************************************/
+tNFA_STATUS send_flush_ram_to_flash() {
+  DLOG_IF(INFO, nfc_debug_enabled)
+    << StringPrintf("%s: enter", __func__);
+  tNFA_STATUS status = NFA_STATUS_OK;
+  uint8_t  cmd[] = {0x2F, 0x21, 0x00};
 
+  status = NxpNfc_Write_Cmd_Common(sizeof(cmd), cmd);
+  if(status != NFA_STATUS_OK) {
+    DLOG_IF(ERROR, nfc_debug_enabled)
+      << StringPrintf("%s: send_flush_ram_to_flash sending status %x", __func__,status);
+  }
+  return status;
+}
 } /*namespace android*/
 
 #endif
