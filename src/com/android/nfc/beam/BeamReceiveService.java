@@ -1,6 +1,5 @@
 package com.android.nfc.beam;
 
-
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.content.BroadcastReceiver;
@@ -81,7 +80,6 @@ public class BeamReceiveService extends Service implements BeamTransferManager.C
     public void onCreate() {
         super.onCreate();
 
-
         // register BT state receiver
         IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         registerReceiver(mBluetoothStateReceiver, filter);
@@ -90,7 +88,6 @@ public class BeamReceiveService extends Service implements BeamTransferManager.C
     @Override
     public void onDestroy() {
         super.onDestroy();
-
         if (mBeamStatusReceiver != null) {
             unregisterReceiver(mBeamStatusReceiver);
         }
