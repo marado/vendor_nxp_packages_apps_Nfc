@@ -127,6 +127,8 @@ public class NativeNfcManager implements DeviceHost {
                 libraryName = "sn100nfc_nci_jni";
                 break;
             case "0x51":
+            case "0x41":
+            case "0x58":
                 libraryName = "nqnfc_nci_jni";
                 break;
             default:
