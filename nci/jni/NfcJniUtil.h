@@ -17,7 +17,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2015-2018 NXP Semiconductors
+ *  Copyright (C) 2015-2019 NXP Semiconductors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -199,7 +199,6 @@ int register_com_android_nfc_NativeLlcpConnectionlessSocket(JNIEnv* e);
 int register_com_android_nfc_NativeLlcpServiceSocket(JNIEnv* e);
 int register_com_android_nfc_NativeLlcpSocket(JNIEnv* e);
 int register_com_android_nfc_NativeNfcSecureElement(JNIEnv* e);
-int register_com_android_nfc_NativeNfcAla(JNIEnv* e);
 #if (NXP_EXTNS == TRUE)
 int register_com_android_nfc_NativeNfcMposManager(JNIEnv* e);
 #endif

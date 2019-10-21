@@ -25,11 +25,12 @@ import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
+import android.os.SystemProperties;
 
 public class SystemCodeRoutingManager {
     static final String TAG = "SystemCodeRoutingManager";
 
-    static final boolean DBG = false;
+    static final boolean DBG = ((SystemProperties.get("persist.nfc.ce_debug").equals("1")) ? true : false);
 
     final Object mLock = new Object();
 
@@ -64,7 +65,7 @@ public class SystemCodeRoutingManager {
             for (T3tIdentifier t3tIdentifier : toBeAdded) {
                 if (DBG) Log.d(TAG, "registerNfcFSystemCodeonDh:");
                 NfcService.getInstance().registerT3tIdentifier(
-                        t3tIdentifier.systemCode, t3tIdentifier.nfcid2, t3tIdentifier.t3tPmm);
+                        t3tIdentifier.systemCode, t3tIdentifier.nfcid2 , t3tIdentifier.t3tPmm);
             }
             if (DBG) {
                 Log.d(TAG, "(Before) mConfiguredT3tIdentifiers: size=" +
@@ -79,8 +80,6 @@ public class SystemCodeRoutingManager {
                     Log.d(TAG, "    " + t3tIdentifier.systemCode +
                             "/" + t3tIdentifier.nfcid2 +
                             "/" + t3tIdentifier.t3tPmm);
-
-                    Log.d(TAG, "    " + t3tIdentifier.systemCode + "/");
                 }
             }
             mConfiguredT3tIdentifiers = t3tIdentifiers;
