@@ -2,7 +2,7 @@
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
- * Copyright (C) 2015 NXP Semiconductors
+ * Copyright (C) 2018 NXP Semiconductors
  * The original Work has been changed by NXP Semiconductors.
  * Copyright (C) 2013 The Android Open Source Project
  *
@@ -26,7 +26,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.nfc.cardemulation.NQApduServiceInfo;
+import android.nfc.cardemulation.NfcApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
 import android.nfc.cardemulation.HostApduService;
 import android.os.Bundle;
@@ -44,11 +44,13 @@ import com.android.nfc.cardemulation.RegisteredAidCache.AidResolveInfo;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import android.os.SystemProperties;
 
+import android.util.StatsLog;
 
 public class HostEmulationManager {
     static final String TAG = "HostEmulationManager";
-    static final boolean DBG = true;
+    static final boolean DBG = ((SystemProperties.get("persist.nfc.ce_debug").equals("1")) ? true : false);
 
     static final int STATE_IDLE = 0;
     static final int STATE_W4_SELECT = 1;
@@ -56,29 +58,13 @@ public class HostEmulationManager {
     static final int STATE_W4_DEACTIVATE = 3;
     static final int STATE_XFER = 4;
 
-    static final int SCREEN_STATE_OFF = 1;
-    static final int SCREEN_STATE_ON_LOCKED = 2;
-    static final int SCREEN_STATE_ON_UNLOCKED = 3;
-
     /** Minimum AID lenth as per ISO7816 */
     static final int MINIMUM_AID_LENGTH = 5;
-    static final int NFCID2_LENGTH = 8;
 
     /** Length of Select APDU header including length byte */
     static final int SELECT_APDU_HDR_LENGTH = 5;
-    static final int T3T_CMD_HDR_LENGTH = 1;
 
     static final byte INSTR_SELECT = (byte)0xA4;
-
-    /** NFC Forum / Felica commands */
-    static final byte T3T_MSG_OPC_CHECK_CMD = 0x06;
-    static final byte T3T_MSG_OPC_UPDATE_CMD = 0x08;
-
-    /** Felica commands (not specified in NFC-Forum Type 3 tag specifications) */
-    static final byte T3T_MSG_OPC_POLL_CMD = 0x00;
-    static final byte T3T_MSG_OPC_REQ_SERVICE_CMD = 0x02;
-    static final byte T3T_MSG_OPC_REQ_RESPONSE_CMD = 0x04;
-    static final byte T3T_MSG_OPC_REQ_SYSTEMCODE_CMD = 0x0C;
 
     static final String ANDROID_HCE_AID = "A000000476416E64726F6964484345";
     static final byte[] ANDROID_HCE_RESPONSE = {0x14, (byte)0x81, 0x00, 0x00, (byte)0x90, 0x00};
@@ -88,7 +74,6 @@ public class HostEmulationManager {
 
     final Context mContext;
     final RegisteredAidCache mAidCache;
-
     final Messenger mMessenger = new Messenger (new MessageHandler());
     final KeyguardManager mKeyguard;
     final Object mLock;
@@ -117,19 +102,14 @@ public class HostEmulationManager {
     ComponentName mActiveServiceName;
 
     String mLastSelectedAid;
-    String mLastSelectedNfcid2;
-
     int mState;
     byte[] mSelectApdu;
-
-    int mScreenState;
 
     public HostEmulationManager(Context context, RegisteredAidCache aidCache) {
         mContext = context;
         mLock = new Object();
         mAidCache = aidCache;
         mState = STATE_IDLE;
-        mScreenState = SCREEN_STATE_ON_UNLOCKED;
         mKeyguard = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
     }
 
@@ -153,10 +133,6 @@ public class HostEmulationManager {
          }
      }
 
-    public void setScreenState(int state) {
-        mScreenState = state;
-    }
-
     public void onHostEmulationActivated() {
         Log.d(TAG, "notifyHostEmulationActivated");
         synchronized (mLock) {
@@ -173,14 +149,10 @@ public class HostEmulationManager {
     }
 
     public void onHostEmulationData(byte[] data) {
-        Log.d(TAG, "notifyHostEmulationData"+data.length);
-        // Handle and route the NFCID2 based routing here.
-        String nfcid2 = null;
+        Log.d(TAG, "notifyHostEmulationData");
         String selectAid = findSelectAid(data);
-        if(selectAid == null && data.length !=5) {
-            nfcid2 = findSelectNfcid2(data);
-        }
         ComponentName resolvedService = null;
+        AidResolveInfo resolveInfo = null;
         synchronized (mLock) {
             if (mState == STATE_IDLE) {
                 Log.e(TAG, "Got data in idle state.");
@@ -189,16 +161,12 @@ public class HostEmulationManager {
                 Log.e(TAG, "Dropping APDU in STATE_W4_DECTIVATE");
                 return;
             }
-            if (mScreenState == SCREEN_STATE_OFF) {
-                NfcService.getInstance().sendData(AID_NOT_FOUND);
-                return;
-            }
             if (selectAid != null) {
                 if (selectAid.equals(ANDROID_HCE_AID)) {
                     NfcService.getInstance().sendData(ANDROID_HCE_RESPONSE);
                     return;
                 }
-                AidResolveInfo resolveInfo = mAidCache.resolveAid(selectAid);
+                resolveInfo = mAidCache.resolveAid(selectAid);
                 if (resolveInfo == null || resolveInfo.services.size() == 0) {
                     // Tell the remote we don't handle this AID
                     NfcService.getInstance().sendData(AID_NOT_FOUND);
@@ -208,7 +176,7 @@ public class HostEmulationManager {
                 if (resolveInfo.defaultService != null) {
                     // Resolve to default
                     // Check if resolvedService requires unlock
-                    NQApduServiceInfo defaultServiceInfo = resolveInfo.defaultService;
+                    NfcApduServiceInfo defaultServiceInfo = resolveInfo.defaultService;
                     if (defaultServiceInfo.requiresUnlock() &&
                             mKeyguard.isKeyguardLocked() && mKeyguard.isKeyguardSecure()) {
                         // Just ignore all future APDUs until next tap
@@ -226,7 +194,7 @@ public class HostEmulationManager {
                     }
                     resolvedService = defaultServiceInfo.getComponent();
                 } else if (mActiveServiceName != null) {
-                    for (NQApduServiceInfo serviceInfo : resolveInfo.services) {
+                    for (NfcApduServiceInfo serviceInfo : resolveInfo.services) {
                         if (mActiveServiceName.equals(serviceInfo.getComponent())) {
                             resolvedService = mActiveServiceName;
                             break;
@@ -238,16 +206,11 @@ public class HostEmulationManager {
                     // Ask the user to confirm.
                     // Just ignore all future APDUs until we resolve to only one
                     mState = STATE_W4_DEACTIVATE;
-                    try{
-                        launchResolver((ArrayList<NQApduServiceInfo>)resolveInfo.services, null,
-                                resolveInfo.category);
-                    }catch(Exception e){
-                        e.printStackTrace();
-                    }
+                    launchResolver((ArrayList<NfcApduServiceInfo>)resolveInfo.services, null,
+                            resolveInfo.category);
                     return;
                 }
             }
-
             switch (mState) {
             case STATE_W4_SELECT:
                 if (selectAid != null) {
@@ -263,19 +226,15 @@ public class HostEmulationManager {
                         mSelectApdu = data;
                         mState = STATE_W4_SERVICE;
                     }
-                } else if(nfcid2 != null) {
-                    Messenger existingService = bindServiceIfNeededLocked(resolvedService);
-                    if (existingService != null) {
-                        Log.d(TAG, "Binding to existing service");
-                        mState = STATE_XFER;
-                        sendDataToServiceLocked(existingService, data);
-                    } else {
-                        // Waiting for service to be bound
-                        Log.d(TAG, "Waiting for new service.");
-                        // Queue SELECT APDU to be used
-                        mSelectApdu = data;
-                        mState = STATE_W4_SERVICE;
-                    }
+                    if(CardEmulation.CATEGORY_PAYMENT.equals(resolveInfo.category))
+                      StatsLog.write(StatsLog.NFC_CARDEMULATION_OCCURRED,
+                                     StatsLog.NFC_CARDEMULATION_OCCURRED__CATEGORY__HCE_PAYMENT,
+                                     "HCE");
+                    else
+                      StatsLog.write(StatsLog.NFC_CARDEMULATION_OCCURRED,
+                                     StatsLog.NFC_CARDEMULATION_OCCURRED__CATEGORY__HCE_OTHER,
+                                     "HCE");
+
                 } else {
                     Log.d(TAG, "Dropping non-select APDU in STATE_W4_SELECT");
                     NfcService.getInstance().sendData(UNKNOWN_ERROR);
@@ -295,18 +254,7 @@ public class HostEmulationManager {
                         mSelectApdu = data;
                         mState = STATE_W4_SERVICE;
                     }
-                } else if(nfcid2 != null) {
-                    Messenger existingService = bindServiceIfNeededLocked(resolvedService);
-                    if (existingService != null) {
-                        sendDataToServiceLocked(existingService, data);
-                        mState = STATE_XFER;
-                    } else {
-                        // Waiting for service to be bound
-                        mSelectApdu = data;
-                        mState = STATE_W4_SERVICE;
-                    }
-                }
-                else if (mActiveService != null) {
+                } else if (mActiveService != null) {
                     // Regular APDU data
                     sendDataToServiceLocked(mActiveService, data);
                 } else {
@@ -344,7 +292,7 @@ public class HostEmulationManager {
             mActiveServiceName = null;
             unbindServiceIfNeededLocked();
             mState = STATE_W4_SELECT;
-//TODO: Check the impact on NfcService onSEDeactivated
+
             //close the TapAgainDialog
             Intent intent = new Intent(TapAgainDialog.ACTION_CLOSE);
             intent.setPackage("com.android.nfc");
@@ -440,7 +388,7 @@ public class HostEmulationManager {
         }
     }
 
-    void launchTapAgain(NQApduServiceInfo service, String category) {
+    void launchTapAgain(NfcApduServiceInfo service, String category) {
         Intent dialogIntent = new Intent(mContext, TapAgainDialog.class);
         dialogIntent.putExtra(TapAgainDialog.EXTRA_CATEGORY, category);
         dialogIntent.putExtra(TapAgainDialog.EXTRA_APDU_SERVICE, service);
@@ -448,7 +396,7 @@ public class HostEmulationManager {
         mContext.startActivityAsUser(dialogIntent, UserHandle.CURRENT);
     }
 
-    void launchResolver(ArrayList<NQApduServiceInfo> services, ComponentName failedComponent,
+    void launchResolver(ArrayList<NfcApduServiceInfo> services, ComponentName failedComponent,
             String category) {
         Intent intent = new Intent(mContext, AppChooserActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
@@ -482,33 +430,6 @@ public class HostEmulationManager {
             return bytesToString(data, SELECT_APDU_HDR_LENGTH, aidLength);
         }
         return null;
-    }
-
-//FelicaOnHost
-    String findSelectNfcid2(byte[] data) {
-
-    /*
-        if (data == null || data.length < T3T_CMD_HDR_LENGTH + NFCID2_LENGTH) {
-            if (DBG) Log.d(TAG, "Data size too small for NFCID2");
-            return null;
-        }*/
-        int payloadLength = data[0];
-        int FelicaCmdOpcodeByte0 = data[1];
-        int FelicaCmdOpcodeLength=1;
-        if(data.length != data[0] ||
-                (!isValidT3TOpcode(data[1])) ) {
-            return null;
-        }
-        if(FelicaCmdOpcodeByte0 >= 0xC0 && FelicaCmdOpcodeByte0 <= 0xDF)
-            FelicaCmdOpcodeLength =2;
-
-        if (DBG) Log.d(TAG, "payloadLength = " + payloadLength);
-        if (DBG) Log.d(TAG, "FelicaCmdOpcodeLength = " + FelicaCmdOpcodeLength );
-        if (DBG) Log.d(TAG, "FelicaCmdOpcodeByte0 = " + FelicaCmdOpcodeByte0 );
-        //if (data.length < T3T_CMD_HDR_LENGTH + payloadLength) {
-            //return null;
-        //}
-        return bytesToString(data, FelicaCmdOpcodeLength + 1 , NFCID2_LENGTH);
     }
 
     private ServiceConnection mPaymentConnection = new ServiceConnection() {
@@ -601,7 +522,7 @@ public class HostEmulationManager {
                     AidResolveInfo resolveInfo = mAidCache.resolveAid(mLastSelectedAid);
                     boolean isPayment = false;
                     if (resolveInfo.services.size() > 0) {
-                        launchResolver((ArrayList<NQApduServiceInfo>)resolveInfo.services,
+                        launchResolver((ArrayList<NfcApduServiceInfo>)resolveInfo.services,
                                 mActiveServiceName, resolveInfo.category);
                     }
                 }
@@ -629,22 +550,5 @@ public class HostEmulationManager {
         if (mServiceBound) {
             pw.println("    other: " + mServiceName);
         }
-    }
-
-    private boolean isValidT3TOpcode (byte opcode) {
-        boolean result = false;
-        if (  (opcode == T3T_MSG_OPC_CHECK_CMD)
-                ||(opcode == T3T_MSG_OPC_UPDATE_CMD)
-                ||(opcode == T3T_MSG_OPC_POLL_CMD)
-                ||(opcode == T3T_MSG_OPC_REQ_SERVICE_CMD)
-                ||(opcode == T3T_MSG_OPC_REQ_RESPONSE_CMD)
-                ||(opcode == T3T_MSG_OPC_REQ_SYSTEMCODE_CMD)
-                ||( opcode >= 0xC0 && opcode <= 0xDF)
-                )
-            {
-                result = true;
-            }
-
-        return result;
     }
 }

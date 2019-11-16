@@ -17,7 +17,7 @@
  *
  *  The original Work has been changed by NXP Semiconductors.
  *
- *  Copyright (C) 2015-2018 NXP Semiconductors
+ *  Copyright (C) 2015-2019 NXP Semiconductors
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -151,7 +151,6 @@ typedef enum apdu_gate {
 typedef enum nfcee_type { UICC1 = 0x01, UICC2 = 0x02, ESE = 0x04 } nfcee_type_t;
 typedef enum { NONE = 0x00, FW_DOWNLOAD, JCOP_DOWNLOAD } Downlaod_mode_t;
 namespace android {
-extern SyncEvent sNfaEnableDisablePollingEvent;
 extern void startStopPolling(bool isStartPolling);
 
 }  // namespace android
@@ -159,6 +158,7 @@ extern void startStopPolling(bool isStartPolling);
 class SecureElement {
  public:
   tNFA_HANDLE mActiveEeHandle;
+  bool mActivatedInListenMode;  // whether we're activated in listen mode
 #if (NXP_EXTNS == TRUE)
 #define MAX_NFCEE 5
   struct mNfceeData {
@@ -169,7 +169,6 @@ class SecureElement {
   mNfceeData mNfceeData_t;
   uint8_t mHostsPresent;
   uint8_t mETSI12InitStatus;
-  uint8_t mHostsId[MAX_NFCEE];
   uint8_t eSE_Compliancy;
   uint8_t mCreatedPipe;
   uint8_t mDeletePipeHostId;
@@ -425,31 +424,6 @@ class SecureElement {
 
   /*******************************************************************************
   **
-  ** Function:        notifyConnectivityListeners
-  **
-  ** Description:     Notify the NFC service about a connectivity event from
-  *secure element.
-  **                  evtSrc: source of event UICC/eSE.
-  **
-  ** Returns:         None
-  **
-  *******************************************************************************/
-  void notifyConnectivityListeners(uint8_t evtSrc);
-
-  /*******************************************************************************
-  **
-  ** Function:        notifyEmvcoMultiCardDetectedListeners
-  **
-  ** Description:     Notify the NFC service about a multiple card presented to
-  **                  Emvco reader.
-  **
-  ** Returns:         None
-  **
-  *******************************************************************************/
-  void notifyEmvcoMultiCardDetectedListeners();
-
-  /*******************************************************************************
-  **
   ** Function:        notifyTransactionListenersOfTlv
   **
   ** Description:     Notify the NFC service about a transaction event from
@@ -681,7 +655,7 @@ class SecureElement {
 #endif
   jint getSETechnology(tNFA_HANDLE eeHandle);
   static const uint8_t UICC_ID = 0x02;
-  static const uint8_t UICC2_ID = 0x04;
+  static const uint8_t UICC2_ID = 0x03;
   static const uint8_t ESE_ID = 0x01;
   static const uint8_t DH_ID = 0x00;
 #if (NXP_EXTNS == TRUE)
@@ -715,7 +689,6 @@ class SecureElement {
   SyncEvent mEeSetModeEvent;
   SyncEvent mModeSetNtf;
   SyncEvent mHciAddStaticPipe;
-  SyncEvent mApduPaternAddRemoveEvent;
 #if ((NXP_EXTNS == TRUE))
   SyncEvent mPwrLinkCtrlEvent;
 #endif
@@ -804,7 +777,6 @@ class SecureElement {
   nfc_jni_native_data* mNativeData;
   bool mIsInit;           // whether EE is initialized
   uint8_t mActualNumEe;   // actual number of EE's reported by the stack
-  uint8_t mNumEePresent;  // actual number of usable EE's
   bool mbNewEE;
   uint8_t mNewPipeId;
   uint8_t mNewSourceGate;
@@ -817,7 +789,6 @@ class SecureElement {
   int mAtrInfolen;
   uint8_t mAtrStatus;
   bool mUseOberthurWarmReset;         // whether to use warm-reset command
-  bool mActivatedInListenMode;        // whether we're activated in listen mode
   uint8_t mOberthurWarmResetCommand;  // warm-reset command byte
   tNFA_EE_INFO mEeInfo[MAX_NUM_EE];   // actual size stored in mActualNumEe
   tNFA_EE_DISCOVER_REQ mUiccInfo;
