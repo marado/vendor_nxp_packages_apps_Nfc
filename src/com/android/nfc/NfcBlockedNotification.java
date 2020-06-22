@@ -38,15 +38,14 @@ public class NfcBlockedNotification extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        PendingIntent pIntent;
         Intent infoIntent;
-        if (TextUtils.isEmpty(getString(R.string.nfc_blocking_alert_link))) {
-            // Do nothing after user click the notification if nfc_blocking_alert_link is empty
+        if (TextUtils.isEmpty(getString(R.string.antenna_blocked_alert_link))) {
+            // Do nothing after user click the notification if antenna_blocked_alert_link is empty
             infoIntent = new Intent();
         } else {
             // Open the link after user click the notification
             infoIntent = new Intent(Intent.ACTION_VIEW);
-            infoIntent.setData(Uri.parse(getString(R.string.nfc_blocking_alert_link)));
+            infoIntent.setData(Uri.parse(getString(R.string.antenna_blocked_alert_link)));
         }
         Notification.Builder builder = new Notification.Builder(this, NFC_NOTIFICATION_CHANNEL);
         builder.setContentTitle(getString(R.string.nfc_blocking_alert_title))
@@ -54,11 +53,12 @@ public class NfcBlockedNotification extends Activity {
                .setSmallIcon(android.R.drawable.stat_sys_warning)
                .setPriority(NotificationManager.IMPORTANCE_DEFAULT)
                .setAutoCancel(true)
-               .setContentIntent(PendingIntent.getActivity(getApplicationContext(), 0, infoIntent, 0));
+               .setContentIntent(PendingIntent.getActivity(getApplicationContext(), 0, infoIntent,
+                       PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE));
         mNotificationChannel = new NotificationChannel(NFC_NOTIFICATION_CHANNEL,
             getString(R.string.nfcUserLabel), NotificationManager.IMPORTANCE_DEFAULT);
         NotificationManager notificationManager =
-            (NotificationManager) getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            getApplicationContext().getSystemService(NotificationManager.class);
         notificationManager.createNotificationChannel(mNotificationChannel);
         notificationManager.notify(NOTIFICATION_ID_NFC, builder.build());
     }
