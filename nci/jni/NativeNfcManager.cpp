@@ -8154,7 +8154,9 @@ __attribute__((unused)) static jint nfcManager_SWPSelfTest(JNIEnv * e, jobject o
       halMgr = nfcAdapter.GetHalEntryFuncs();
     }
     /*Overidable method list*/
-    virtual tNFA_STATUS preProcessor();
+    virtual tNFA_STATUS preProcessor() {
+      return NFA_STATUS_OK;
+    }
     virtual tNFA_STATUS send(uint8_t *rsp_len, uint8_t *rsp_buf) {
       return NFA_STATUS_OK;
     }
