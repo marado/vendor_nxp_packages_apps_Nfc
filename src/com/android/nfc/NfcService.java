@@ -3358,16 +3358,21 @@ public class NfcService implements DeviceHostListener {
                             return;
                     }
 
-                    if (mScreenState == ScreenStateHelper.SCREEN_STATE_ON_UNLOCKED) {
-                      applyRouting(false);
-                    }
-                    int screen_state_mask = (mNfcUnlockManager.isLockscreenPollingEnabled()) ?
-                                (ScreenStateHelper.SCREEN_POLLING_TAG_MASK | mScreenState) : mScreenState;
+                    mRoutingWakeLock.acquire();
+                    try {
+                      if (mScreenState == ScreenStateHelper.SCREEN_STATE_ON_UNLOCKED) {
+                        applyRouting(false);
+                      }
+                      int screen_state_mask = (mNfcUnlockManager.isLockscreenPollingEnabled()) ?
+                                  (ScreenStateHelper.SCREEN_POLLING_TAG_MASK | mScreenState) : mScreenState;
 
-                   if (mNfcUnlockManager.isLockscreenPollingEnabled())
+                      if (mNfcUnlockManager.isLockscreenPollingEnabled())
                         applyRouting(false);
 
-                    mDeviceHost.doSetScreenState(screen_state_mask);
+                      mDeviceHost.doSetScreenState(screen_state_mask);
+                    } finally {
+                      mRoutingWakeLock.release();
+                    }
                     break;
 
                 case MSG_SCR_TIMEOUT:
