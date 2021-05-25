@@ -16,8 +16,6 @@
 
 package com.android.nfc.handover;
 
-import static android.view.WindowManager.LayoutParams.SYSTEM_FLAG_HIDE_NON_SYSTEM_OVERLAY_WINDOWS;
-
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothDevice;
@@ -37,16 +35,14 @@ public class ConfirmConnectActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addSystemFlags(SYSTEM_FLAG_HIDE_NON_SYSTEM_OVERLAY_WINDOWS);
         AlertDialog.Builder builder = new AlertDialog.Builder(this,
                 R.style.DialogAlertDayNight);
         Intent launchIntent = getIntent();
         mDevice = launchIntent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
         if (mDevice == null) finish();
         Resources res = getResources();
-        String btExtraName = launchIntent.getStringExtra(BluetoothDevice.EXTRA_NAME);
         String confirmString = String.format(res.getString(R.string.confirm_pairing),
-                "\"" + btExtraName.replaceAll("\\r|\\n", "") + "\"");
+                launchIntent.getStringExtra(BluetoothDevice.EXTRA_NAME));
         builder.setMessage(confirmString)
                .setCancelable(false)
                .setPositiveButton(res.getString(R.string.pair_yes),
