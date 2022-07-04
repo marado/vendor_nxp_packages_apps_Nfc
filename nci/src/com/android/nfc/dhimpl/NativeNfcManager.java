@@ -124,11 +124,18 @@ public class NativeNfcManager implements DeviceHost {
         String libraryName;
 
         switch(chip_id) {
-            case "0xa3":
-            case "0xa4":
+            case "0xa0":    // SN100
+            case "0xa3":    // SN100 A3
+            case "0xa4":    // SN100 A4
+            case "0xc1":    // SN220
                 libraryName = "sn100nfc_nci_jni";
                 break;
-            case "0x51":
+            case "0x40":    // NQ310
+            case "0x41":    // NQ310
+            case "0x48":    // NQ210
+            case "0x50":    // NQ330
+            case "0x51":    // NQ330
+            case "0x58":    // NQ220
                 libraryName = "nqnfc_nci_jni";
                 break;
             default:
